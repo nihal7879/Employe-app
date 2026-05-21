@@ -89,7 +89,7 @@ export default function Employees() {
       <div className="card p-4">
         <div className="relative max-w-sm mb-3">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <input className="pl-9" placeholder="Search by name, email, code…"
+          <input className="!pl-9" placeholder="Search by name, email, code…"
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="overflow-x-auto">

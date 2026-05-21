@@ -96,7 +96,8 @@ export default function GlobalSearch() {
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder="Search clients, projects, employees…"
-        className="pl-9 pr-9 py-2 w-72 rounded-full bg-slate-100 border-slate-100 text-sm focus:bg-white
+        style={{ width: '28rem' }}
+        className="!pl-9 !pr-9 py-2 rounded-full bg-slate-100 border-slate-100 text-sm focus:bg-white
                    dark:bg-white/[0.05] dark:border-white/10"
       />
       {query && (
