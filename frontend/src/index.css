@@ -1,21 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  @apply text-slate-900 antialiased;
+  background:
+    radial-gradient(at 10% 0%,  rgba(124,58,237,0.06) 0px, transparent 50%),
+    radial-gradient(at 92% 8%,  rgba(6,182,212,0.05) 0px, transparent 55%),
+    #F6F7FB;
+  background-attachment: fixed;
 }
 
+/* scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.10); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.20); }
+
+::selection { background: rgba(124,58,237,0.18); color: inherit; }
+
 @layer components {
-  .btn { @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors; }
-  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
-  .btn-secondary { @apply btn bg-white border border-slate-300 hover:bg-slate-50; }
-  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
-  .input { @apply w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30; }
-  .label { @apply block text-sm font-medium text-slate-700 mb-1; }
-  .card { @apply bg-white rounded-lg border border-slate-200 shadow-sm; }
-  .table-th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 bg-slate-50 border-b border-slate-200; }
-  .table-td { @apply px-3 py-2 text-sm border-b border-slate-100; }
+  /* Surfaces */
+  .card {
+    @apply bg-white border border-slate-200/70 rounded-2xl
+           shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)];
+  }
+  .card-hover {
+    @apply transition-all duration-300
+           hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_16px_40px_-12px_rgba(15,23,42,0.14)] hover:-translate-y-0.5;
+  }
+  .glass {
+    @apply bg-white/85 backdrop-blur-xl border border-slate-200/70;
+  }
+  .glass-strong {
+    @apply bg-white/95 backdrop-blur-2xl border border-slate-200;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 select-none;
+  }
+  .btn-primary {
+    @apply btn text-white bg-gradient-to-br from-brand-600 to-brand-500
+           shadow-[0_4px_12px_-2px_rgba(124,58,237,0.45)]
+           hover:shadow-[0_6px_18px_-2px_rgba(124,58,237,0.55)] hover:scale-[1.02] active:scale-[0.99];
+  }
+  .btn-secondary {
+    @apply btn bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300;
+  }
+  .btn-ghost {
+    @apply btn text-slate-600 hover:text-slate-900 hover:bg-slate-100;
+  }
+  .btn-danger {
+    @apply btn bg-red-500 text-white hover:bg-red-600;
+  }
+
+  /* Inputs */
+  .input,
+  input[type="text"], input[type="email"], input[type="password"],
+  input[type="number"], input[type="date"], input[type="time"],
+  textarea, select {
+    @apply w-full rounded-xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400
+           px-3.5 py-2.5 text-sm appearance-none
+           focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 transition-colors;
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+  input:focus, textarea:focus, select:focus { outline: none !important; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18); border-color: #8B5CF6 !important; }
+  select option { @apply bg-white text-slate-900; }
+  .label { @apply block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5; }
+
+  /* Tables */
+  .table-th {
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-50/80
+           border-b border-slate-200/80 first:rounded-tl-xl last:rounded-tr-xl;
+  }
+  .table-td {
+    @apply px-4 py-3 text-sm text-slate-700 border-b border-slate-100;
+  }
+  tbody tr { @apply transition-colors hover:bg-slate-50/70; }
+
+  /* Pills */
+  .pill { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border; }
+  .pill-ok    { @apply pill bg-emerald-50 text-emerald-700 border-emerald-200; }
+  .pill-warn  { @apply pill bg-amber-50  text-amber-700  border-amber-200; }
+  .pill-bad   { @apply pill bg-rose-50   text-rose-700   border-rose-200; }
+  .pill-brand { @apply pill bg-brand-50  text-brand-700  border-brand-100; }
+  .pill-cyan  { @apply pill bg-cyan-50   text-cyan-700   border-cyan-100; }
+  .pill-soft  { @apply pill bg-slate-100 text-slate-700  border-slate-200; }
+
+  .text-grad {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-600 via-fuchsia-500 to-cyan-500;
+  }
+
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, rgba(15,23,42,0.04), rgba(15,23,42,0.10), rgba(15,23,42,0.04));
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
 }

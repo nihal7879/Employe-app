@@ -57,6 +57,8 @@ export interface DailyTask {
   employee_id: number;
   employee_name?: string;
   employee_email?: string;
+  employee_code?: string;
+  department_name?: string;
   client_id: number;
   client_name?: string;
   project_id: number;
@@ -73,4 +75,5 @@ export interface DailyTask {
   submission_status: 'Submitted' | 'Pending';
   remarks?: string;
   ip_address?: string;
+  created_at?: string;
 }

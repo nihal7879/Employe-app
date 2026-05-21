@@ -1,13 +1,16 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser = require('cookie-parser');
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.use(cookieParser());
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL?.split(',') || true,
+    origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'],
     credentials: true,
   });
 
@@ -23,7 +26,7 @@ async function bootstrap() {
     .setTitle('Employee App API')
     .setDescription('Daily Task Management — REST API')
     .setVersion('0.1.0')
-    .addBearerAuth()
+    .addCookieAuth('em_token')
     .build();
   const doc = SwaggerModule.createDocument(app, swagger);
   SwaggerModule.setup('docs', app, doc);

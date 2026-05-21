@@ -16,11 +16,24 @@ export class SchedulerService {
     private readonly mail: EmailService,
   ) {}
 
-  // ===== 12:00 PM — daily report email to every employee =====
+  // ===== 6:00 AM — yesterday's recap email to every employee =====
+  @Cron('0 0 6 * * *', { name: 'morning-yesterday-recap', timeZone: process.env.TZ || 'Asia/Kolkata' })
+  async sendMorningRecap() {
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const date = yesterday.toISOString().slice(0, 10);
+    this.logger.log(`Running 6 AM morning recap for ${date}`);
+    await this.dispatchEmployeeReports(date, `Your tasks yesterday — ${date}`);
+  }
+
+  // ===== 12:00 PM — same-day mid-day report =====
   @Cron('0 0 12 * * *', { name: 'daily-employee-report', timeZone: process.env.TZ || 'Asia/Kolkata' })
   async sendDailyEmployeeReports() {
     const date = new Date().toISOString().slice(0, 10);
-    this.logger.log(`Running daily employee report job for ${date}`);
+    this.logger.log(`Running 12 PM daily report for ${date}`);
+    await this.dispatchEmployeeReports(date, `Your Daily Task Report — ${date}`);
+  }
+
+  private async dispatchEmployeeReports(date: string, subject: string) {
     const employees = await this.db('employees')
       .where({ is_active: true, is_deleted: false })
       .select('id', 'name', 'email');
@@ -30,7 +43,7 @@ export class SchedulerService {
         const report = await this.tasks.getEmployeeReport(emp.id, date);
         await this.mail.send({
           to: emp.email,
-          subject: `Your Daily Task Report — ${date}`,
+          subject,
           type: 'Daily Summary',
           html: employeeDailyReportEmail({
             name: emp.name,
@@ -40,7 +53,7 @@ export class SchedulerService {
           }),
         });
       } catch (err: any) {
-        this.logger.error(`Daily report failed for ${emp.email}: ${err?.message}`);
+        this.logger.error(`Report failed for ${emp.email}: ${err?.message}`);
       }
     }
   }

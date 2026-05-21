@@ -18,7 +18,9 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/tasks" element={<Tasks />} />
+          <Route element={<ProtectedRoute employeeOnly />}>
+            <Route path="/tasks" element={<Tasks />} />
+          </Route>
           <Route element={<ProtectedRoute adminOnly />}>
             <Route path="/reports" element={<Reports />} />
             <Route path="/admin/employees" element={<Employees />} />

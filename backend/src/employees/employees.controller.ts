@@ -14,8 +14,9 @@ export class EmployeesController {
     @Query('search') search?: string,
     @Query('department_id') department_id?: number,
     @Query('role_id') role_id?: number,
+    @Query('include_admin') include_admin?: string,
   ) {
-    return this.service.findAll({ search, department_id, role_id });
+    return this.service.findAll({ search, department_id, role_id, include_admin });
   }
 
   @Get(':id')

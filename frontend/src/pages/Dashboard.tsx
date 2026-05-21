@@ -1,110 +1,495 @@
-import { useEffect, useState } from 'react';
-import { Briefcase, Users, FolderKanban, AlertTriangle, Clock } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { useEffect, useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Briefcase, Users, FolderKanban, AlertTriangle, Clock, CheckCircle2,
+  TrendingUp, Activity as ActivityIcon, Flame, Layers, AlertCircle,
+} from 'lucide-react';
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  LineChart, Line,
+  RadialBarChart, RadialBar,
+} from 'recharts';
 import StatCard from '../components/StatCard';
+import SegmentedBar, { Segment } from '../components/SegmentedBar';
+import AnimatedNumber from '../components/AnimatedNumber';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import type { DailyTask } from '../types';
 
-const PIE_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#84cc16', '#f43f5e'];
+const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16'];
+
+const TOOLTIP_STYLE = {
+  borderRadius: 12,
+  border: '1px solid rgba(15,23,42,0.10)',
+  boxShadow: '0 12px 32px rgba(15,23,42,0.10)',
+  background: '#fff',
+  fontSize: 12,
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
   const [admin, setAdmin] = useState<any>(null);
   const [myToday, setMyToday] = useState<{ total_hours: number; tasks: DailyTask[] } | null>(null);
+  const [pending, setPending] = useState<any[]>([]);
+  const [monthTasks, setMonthTasks] = useState<DailyTask[]>([]);
 
   useEffect(() => {
     if (isAdmin) {
       api.get('/analytics/dashboard').then((r) => setAdmin(r.data)).catch(() => {});
+      api.get('/reports/daily', { params: { type: 'pending', date: today() } }).then((r) => setPending(r.data || [])).catch(() => {});
+      api.get('/daily-tasks', { params: { from: monthStart(), to: today() } }).then((r) => setMonthTasks(r.data || [])).catch(() => {});
+    } else {
+      api.get('/daily-tasks/my/today').then((r) => setMyToday(r.data)).catch(() => {});
     }
-    api.get('/daily-tasks/my/today').then((r) => setMyToday(r.data)).catch(() => {});
   }, [isAdmin]);
+
+  const hoursToday = Number(myToday?.total_hours || 0);
+  const productivityPct = Math.min(100, Math.round((hoursToday / 8) * 100));
+  const teamHoursToday = Number(admin?.today?.hours || 0);
+  const teamGoal = Number(admin?.counts?.active_employees || 0) * 8;
+  const teamPct = teamGoal > 0 ? Math.min(100, Math.round((teamHoursToday / teamGoal) * 100)) : 0;
+
+  // Project × activity segmented bars
+  const projectSegments = useMemo(() => {
+    const byProject: Record<string, { project_name: string; tasks: number; total_hours: number; perActivity: Record<string, number> }> = {};
+    for (const t of monthTasks) {
+      const key = t.project_name || '—';
+      if (!byProject[key]) byProject[key] = { project_name: key, tasks: 0, total_hours: 0, perActivity: {} };
+      byProject[key].tasks += 1;
+      byProject[key].total_hours += Number(t.hours_spent || 0);
+      const a = t.activity_name || 'Other';
+      byProject[key].perActivity[a] = (byProject[key].perActivity[a] || 0) + Number(t.hours_spent || 0);
+    }
+    return Object.values(byProject).sort((a, b) => b.total_hours - a.total_hours).slice(0, 8);
+  }, [monthTasks]);
+
+  const activityColorMap = useMemo(() => {
+    const set = new Set<string>();
+    projectSegments.forEach((p) => Object.keys(p.perActivity).forEach((a) => set.add(a)));
+    const map: Record<string, string> = {};
+    Array.from(set).forEach((a, i) => { map[a] = COLORS[i % COLORS.length]; });
+    return map;
+  }, [projectSegments]);
+
+  const dailyTrend = (admin?.daily_trend || []).map((d: any) => ({
+    date: short(d.task_date), hours: Number(d.hours || 0), tasks: Number(d.tasks || 0),
+  }));
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-
-      {isAdmin && admin && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard icon={<Users size={22} />} label="Active Employees" value={admin.counts.active_employees} />
-            <StatCard icon={<Briefcase size={22} />} label="Active Clients" value={admin.counts.active_clients} accent="bg-emerald-50 text-emerald-700" />
-            <StatCard icon={<FolderKanban size={22} />} label="Active Projects" value={admin.counts.active_projects} accent="bg-amber-50 text-amber-700" />
-            <StatCard icon={<AlertTriangle size={22} />} label="Pending Submissions" value={admin.counts.pending_submissions} accent="bg-red-50 text-red-700" />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="card p-4">
-              <h2 className="font-semibold mb-3">Activity Distribution (this month)</h2>
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie
-                    data={admin.activity_distribution || []}
-                    dataKey="total_hours"
-                    nameKey="activity_name"
-                    outerRadius={90}
-                    label
-                  >
-                    {(admin.activity_distribution || []).map((_: any, i: number) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+      {/* Hero greeting */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-6 md:p-8 relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-brand-500/8 blur-3xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-10 h-56 w-56 rounded-full bg-cyan-500/8 blur-3xl pointer-events-none" />
+        <div className="relative flex flex-col md:flex-row md:items-end gap-6">
+          <div className="flex-1">
+            <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">
+              {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
             </div>
-            <div className="card p-4">
-              <h2 className="font-semibold mb-3">Top Projects (this month)</h2>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={admin.top_projects || []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="project_name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="total_hours" fill="#6366f1" />
-                </BarChart>
-              </ResponsiveContainer>
+            <h1 className="text-3xl md:text-4xl font-bold leading-tight">
+              {greeting()}, <span className="text-grad">{user?.name?.split(' ')[0]}</span>
+            </h1>
+            <p className="text-slate-500 mt-2">
+              {isAdmin
+                ? 'Here is what your team is shipping today.'
+                : 'Let’s make your day count — log every hour and watch your streak grow.'}
+            </p>
+          </div>
+          {!isAdmin && (
+            <div className="flex items-center gap-4">
+              <div className="h-24 w-24">
+                <ResponsiveContainer>
+                  <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ v: productivityPct }]} startAngle={90} endAngle={-270}>
+                    <RadialBar dataKey="v" cornerRadius={10} fill="url(#ring)" background={{ fill: 'rgba(15,23,42,0.06)' }} />
+                    <defs>
+                      <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor="#7C3AED" />
+                        <stop offset="100%" stopColor="#06B6D4" />
+                      </linearGradient>
+                    </defs>
+                  </RadialBarChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider">Today</div>
+                <div className="text-3xl font-bold tabular-nums">
+                  <AnimatedNumber value={hoursToday} format={(n) => n.toFixed(2)} />
+                  <span className="text-base text-slate-500 font-normal"> h</span>
+                </div>
+                <div className="text-xs text-slate-500">{productivityPct}% of 8h goal</div>
+              </div>
             </div>
-          </div>
-        </>
-      )}
-
-      {myToday && (
-        <div className="card p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <Clock className="text-brand-600" />
-            <h2 className="font-semibold">My Hours Today</h2>
-            <span className="ml-auto text-2xl font-bold text-brand-700">
-              {Number(myToday.total_hours || 0).toFixed(2)} h
-            </span>
-          </div>
-          {myToday.tasks.length === 0 ? (
-            <p className="text-sm text-slate-500">No tasks submitted yet today. Head to <a href="/tasks" className="text-brand-600 underline">My Tasks</a> to add one.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr>
-                  <th className="table-th">Project</th>
-                  <th className="table-th">Activity</th>
-                  <th className="table-th">Task</th>
-                  <th className="table-th text-right">Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {myToday.tasks.map((t) => (
-                  <tr key={t.id}>
-                    <td className="table-td">{t.project_name}</td>
-                    <td className="table-td">{t.activity_name}</td>
-                    <td className="table-td">{t.task_title}</td>
-                    <td className="table-td text-right">{Number(t.hours_spent).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
         </div>
+      </motion.div>
+
+      {/* Admin stat row — every card is clickable */}
+      {isAdmin && admin && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <StatCard to="/admin/employees"      icon={<Users size={20} />}         label="Employees"     value={admin.counts.active_employees}    accent="brand" />
+          <StatCard to="/admin/clients"        icon={<Briefcase size={20} />}     label="Clients"       value={admin.counts.active_clients}      accent="pink"  />
+          <StatCard to="/admin/projects"       icon={<FolderKanban size={20} />}  label="Projects"      value={admin.counts.active_projects}     accent="ok"    />
+          <StatCard to="/reports"              icon={<Clock size={20} />}         label="Hours Today"   value={Number(admin.today?.hours || 0)}  accent="cyan" format={(n) => n.toFixed(1)} />
+          <StatCard to="/reports?type=pending" icon={<AlertTriangle size={20} />} label="Pending Subs." value={admin.counts.pending_submissions} accent="bad"   />
+        </div>
+      )}
+
+      {/* Daily trend line + Activity pie */}
+      {isAdmin && admin && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 lg:col-span-2">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-semibold">Daily productivity trend</div>
+                <div className="text-xs text-slate-500">Hours logged over the last 30 days</div>
+              </div>
+              <span className="pill-brand"><TrendingUp size={12} /> 30d</span>
+            </div>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={dailyTrend} margin={{ left: -10, right: 8, top: 8 }}>
+                <defs>
+                  <linearGradient id="line-h" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#7C3AED" /><stop offset="100%" stopColor="#06B6D4" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
+                <XAxis dataKey="date" stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Line type="monotone" dataKey="hours" stroke="url(#line-h)" strokeWidth={3} dot={{ r: 3, fill: '#7C3AED' }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="tasks" stroke="#10B981" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="flex gap-4 text-xs text-slate-500 mt-1">
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-600" /> Hours</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Tasks</span>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-semibold">Activity mix</div>
+                <div className="text-xs text-slate-500">Where time is going</div>
+              </div>
+              <span className="pill-cyan"><ActivityIcon size={12} /> Month</span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={admin.activity_distribution || []}
+                  dataKey="total_hours"
+                  nameKey="activity_name"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  stroke="#fff"
+                  strokeWidth={2}
+                >
+                  {(admin.activity_distribution || []).map((_: any, i: number) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
+              {(admin.activity_distribution || []).slice(0, 6).map((a: any, i: number) => (
+                <div key={i} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                  {a.activity_name}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Top projects bar + top clients bar */}
+      {isAdmin && admin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-semibold">Top projects</div>
+                <div className="text-xs text-slate-500">Hours this month</div>
+              </div>
+              <span className="pill-brand"><Flame size={12} /> Live</span>
+            </div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={admin.top_projects || []} margin={{ left: -10, right: 8, top: 8 }}>
+                <defs>
+                  <linearGradient id="barg" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#7C3AED" />
+                    <stop offset="100%" stopColor="#A78BFA" stopOpacity={0.6} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
+                <XAxis dataKey="project_name" stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} />
+                <Bar dataKey="total_hours" radius={[8, 8, 0, 0]} fill="url(#barg)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-semibold">Top clients</div>
+                <div className="text-xs text-slate-500">Hours this month</div>
+              </div>
+              <span className="pill-cyan"><Briefcase size={12} /> Month</span>
+            </div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={admin.top_clients || []} layout="vertical" margin={{ left: 30, right: 16, top: 8 }}>
+                <defs>
+                  <linearGradient id="cbar" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#06B6D4" />
+                    <stop offset="100%" stopColor="#22D3EE" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(15,23,42,0.06)" horizontal={false} />
+                <XAxis type="number" stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="client_name" stroke="#94A3B8" tick={{ fontSize: 11 }} width={100} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(6,182,212,0.06)' }} />
+                <Bar dataKey="total_hours" radius={[0, 8, 8, 0]} fill="url(#cbar)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Project activity breakdown segmented bars */}
+      {isAdmin && projectSegments.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 md:p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+            <div>
+              <div className="font-semibold">Project · activity breakdown</div>
+              <div className="text-xs text-slate-500">{projectSegments.length} projects · hours split by activity</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {Object.entries(activityColorMap).slice(0, 6).map(([label, color]) => (
+                <span key={label} className="inline-flex items-center gap-1.5 text-[11px] text-slate-600">
+                  <span className="h-2 w-2 rounded-full" style={{ background: color }} /> {label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-12 text-[11px] uppercase tracking-wider text-slate-500 px-1">
+              <div className="col-span-4">Project</div>
+              <div className="col-span-7">Breakdown</div>
+              <div className="col-span-1 text-right">Hours</div>
+            </div>
+            {projectSegments.map((p) => {
+              const segs: Segment[] = Object.entries(p.perActivity).map(([label, value]) => ({
+                label, value: Number(value), color: activityColorMap[label],
+              }));
+              return (
+                <div key={p.project_name} className="grid grid-cols-12 items-center gap-3 py-2 border-t border-slate-100">
+                  <div className="col-span-4 min-w-0">
+                    <div className="font-medium text-slate-900 truncate">{p.project_name}</div>
+                    <div className="text-xs text-slate-500 flex flex-wrap gap-3 mt-1">
+                      {segs.slice(0, 4).map((s) => (
+                        <span key={s.label} className="inline-flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
+                          {s.value.toFixed(1)}h {s.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="col-span-7"><SegmentedBar segments={segs} height={14} /></div>
+                  <div className="col-span-1 text-right">
+                    <div className="font-bold tabular-nums">{p.total_hours.toFixed(1)}</div>
+                    <div className="text-[10px] text-slate-500">{p.tasks} tasks</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Bottom row: top employees bar + client distribution pie */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-9 w-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
+                <Layers size={18} />
+              </div>
+              <div>
+                <div className="font-semibold">Top employees</div>
+                <div className="text-xs text-slate-500">Hours logged this month</div>
+              </div>
+              <span className="ml-auto pill-brand"><Users size={12} /> {admin?.top_employees?.length || 0}</span>
+            </div>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={admin?.top_employees || []} layout="vertical" margin={{ left: 30, right: 16, top: 8 }}>
+                <defs>
+                  <linearGradient id="ebar" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#7C3AED" />
+                    <stop offset="100%" stopColor="#A78BFA" />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(15,23,42,0.06)" horizontal={false} />
+                <XAxis type="number" stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" stroke="#94A3B8" tick={{ fontSize: 11 }} width={110} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} />
+                <Bar dataKey="total_hours" name="Hours" radius={[0, 8, 8, 0]} fill="url(#ebar)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="card p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-9 w-9 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                <Briefcase size={18} />
+              </div>
+              <div>
+                <div className="font-semibold">Hours by client</div>
+                <div className="text-xs text-slate-500">Distribution this month</div>
+              </div>
+              <span className="ml-auto pill-cyan">{(admin?.top_clients || []).length}</span>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={admin?.top_clients || []}
+                  dataKey="total_hours"
+                  nameKey="client_name"
+                  innerRadius={55}
+                  outerRadius={90}
+                  paddingAngle={2}
+                  stroke="#fff"
+                  strokeWidth={2}
+                >
+                  {(admin?.top_clients || []).map((_: any, i: number) => (
+                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
+              {(admin?.top_clients || []).map((c: any, i: number) => (
+                <div key={i} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                  {c.client_name} · <span className="tabular-nums">{Number(c.total_hours).toFixed(1)}h</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+            onClick={() => (window.location.href = '/reports?type=pending')}
+            className="card card-hover p-5 cursor-pointer group"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-9 w-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                <AlertCircle size={18} />
+              </div>
+              <div>
+                <div className="font-semibold flex items-center gap-2">
+                  Pending submissions
+                  <span className="text-slate-300 opacity-0 group-hover:opacity-100 group-hover:text-brand-500 transition-all">→</span>
+                </div>
+                <div className="text-xs text-slate-500">Employees who haven't logged today</div>
+              </div>
+              <span className="ml-auto pill-bad">{pending.length}</span>
+            </div>
+            {pending.length === 0 ? (
+              <div className="text-center py-10">
+                <div className="inline-flex h-14 w-14 rounded-2xl bg-emerald-50 text-emerald-600 items-center justify-center mb-3">
+                  <CheckCircle2 size={24} />
+                </div>
+                <p className="text-sm text-slate-500">Everyone submitted today.</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead><tr>
+                  <th className="table-th">Employee</th>
+                  <th className="table-th">Department</th>
+                </tr></thead>
+                <tbody>
+                  {pending.map((p: any) => (
+                    <tr key={p.id}>
+                      <td className="table-td">
+                        <div className="font-medium text-slate-900">{p.name}</div>
+                        <div className="text-xs text-slate-500">{p.email}</div>
+                      </td>
+                      <td className="table-td">{p.department_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </motion.div>
+        </div>
+      )}
+
+      {/* My today — employees only */}
+      {!isAdmin && myToday && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <Clock className="text-brand-600" size={20} />
+            <h2 className="font-semibold">My tasks · today</h2>
+            <span className="ml-auto text-xs text-slate-500">{myToday.tasks.length} submitted</span>
+          </div>
+          {myToday.tasks.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-50 items-center justify-center mb-3">
+                <CheckCircle2 size={24} className="text-slate-400" />
+              </div>
+              <p className="text-sm text-slate-500 mb-3">No tasks submitted yet today.</p>
+              <a href="/tasks" className="btn-primary inline-flex">Log your first task</a>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="table-th">Project</th>
+                    <th className="table-th">Activity</th>
+                    <th className="table-th">Task</th>
+                    <th className="table-th text-right">Hours</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myToday.tasks.map((t) => (
+                    <tr key={t.id}>
+                      <td className="table-td font-medium text-slate-900">{t.project_name}</td>
+                      <td className="table-td"><span className="pill-brand">{t.activity_name}</span></td>
+                      <td className="table-td">{t.task_title}</td>
+                      <td className="table-td text-right tabular-nums font-semibold">{Number(t.hours_spent).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </motion.div>
       )}
     </div>
   );
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+function today() { return new Date().toISOString().slice(0, 10); }
+function monthStart() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+function short(d: string) {
+  return new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }

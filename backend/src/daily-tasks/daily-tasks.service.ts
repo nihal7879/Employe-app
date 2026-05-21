@@ -10,6 +10,7 @@ export class DailyTasksService {
   private base() {
     return this.db('daily_tasks')
       .leftJoin('employees', 'daily_tasks.employee_id', 'employees.id')
+      .leftJoin('departments', 'employees.department_id', 'departments.id')
       .leftJoin('clients', 'daily_tasks.client_id', 'clients.id')
       .leftJoin('projects', 'daily_tasks.project_id', 'projects.id')
       .leftJoin('activities', 'daily_tasks.activity_id', 'activities.id')
@@ -18,6 +19,8 @@ export class DailyTasksService {
         'daily_tasks.*',
         'employees.name as employee_name',
         'employees.email as employee_email',
+        'employees.employee_code as employee_code',
+        'departments.department_name as department_name',
         'clients.client_name as client_name',
         'projects.project_name as project_name',
         'projects.project_code as project_code',

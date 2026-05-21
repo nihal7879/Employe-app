@@ -12,6 +12,9 @@ class AnalyticsService {
     const today = new Date().toISOString().slice(0, 10);
     const monthStart = today.slice(0, 8) + '01';
 
+    const trendStart = new Date(); trendStart.setDate(trendStart.getDate() - 29);
+    const trendStartStr = trendStart.toISOString().slice(0, 10);
+
     const [
       activeEmployees,
       activeClients,
@@ -21,6 +24,9 @@ class AnalyticsService {
       pendingCount,
       activityDist,
       topProjects,
+      dailyTrend,
+      topClients,
+      topEmployees,
     ] = await Promise.all([
       this.db('employees').where({ is_active: true, is_deleted: false }).count<{ c: number }[]>({ c: '*' }).first(),
       this.db('clients').where({ is_active: true, is_deleted: false }).count<{ c: number }[]>({ c: '*' }).first(),
@@ -45,6 +51,33 @@ class AnalyticsService {
         .sum({ total_hours: 'hours_spent' })
         .orderBy('total_hours', 'desc')
         .limit(5),
+      this.db('daily_tasks')
+        .where('is_deleted', false)
+        .andWhere('task_date', '>=', trendStartStr)
+        .groupBy('task_date')
+        .select('task_date')
+        .sum({ hours: 'hours_spent' })
+        .count({ tasks: '*' })
+        .orderBy('task_date', 'asc'),
+      this.db('daily_tasks')
+        .leftJoin('clients', 'daily_tasks.client_id', 'clients.id')
+        .where('daily_tasks.is_deleted', false)
+        .andWhere('daily_tasks.task_date', '>=', monthStart)
+        .groupBy('clients.client_name')
+        .select('clients.client_name')
+        .sum({ total_hours: 'hours_spent' })
+        .orderBy('total_hours', 'desc')
+        .limit(5),
+      this.db('daily_tasks')
+        .leftJoin('employees', 'daily_tasks.employee_id', 'employees.id')
+        .where('daily_tasks.is_deleted', false)
+        .andWhere('daily_tasks.task_date', '>=', monthStart)
+        .groupBy('employees.name')
+        .select('employees.name')
+        .sum({ total_hours: 'hours_spent' })
+        .count({ tasks: '*' })
+        .orderBy('total_hours', 'desc')
+        .limit(5),
     ]);
 
     return {
@@ -58,6 +91,9 @@ class AnalyticsService {
       this_month: monthTotals,
       activity_distribution: activityDist,
       top_projects: topProjects,
+      top_clients: topClients,
+      top_employees: topEmployees,
+      daily_trend: dailyTrend,
     };
   }
 }

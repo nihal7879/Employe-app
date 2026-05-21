@@ -19,7 +19,7 @@ export class EmployeesService {
       );
   }
 
-  async findAll(query: { search?: string; department_id?: number; role_id?: number }) {
+  async findAll(query: { search?: string; department_id?: number; role_id?: number; include_admin?: string | boolean }) {
     let q = this.baseSelect();
     if (query.search) {
       q = q.where((b) =>
@@ -31,6 +31,8 @@ export class EmployeesService {
     }
     if (query.department_id) q = q.where('employees.department_id', query.department_id);
     if (query.role_id) q = q.where('employees.role_id', query.role_id);
+    const includeAdmin = query.include_admin === true || query.include_admin === 'true';
+    if (!includeAdmin) q = q.whereNot('roles.role_name', 'Admin');
     return q.orderBy('employees.created_at', 'desc');
   }
 

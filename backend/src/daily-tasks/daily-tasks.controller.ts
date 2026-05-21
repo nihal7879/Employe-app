@@ -30,6 +30,7 @@ export class DailyTasksController {
   }
 
   @Post()
+  @Roles('Employee')
   create(
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
@@ -39,6 +40,7 @@ export class DailyTasksController {
   }
 
   @Put(':id')
+  @Roles('Employee')
   update(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
@@ -48,6 +50,7 @@ export class DailyTasksController {
   }
 
   @Delete(':id')
+  @Roles('Employee')
   remove(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.service.remove(id, user);
   }
