@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Users, FolderKanban, AlertTriangle, Clock, CheckCircle2,
-  TrendingUp, Activity as ActivityIcon, Flame, Layers, AlertCircle,
+  TrendingUp, Activity as ActivityIcon, Flame, Layers, AlertCircle, CalendarRange,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -34,16 +34,35 @@ export default function Dashboard() {
   const [myToday, setMyToday] = useState<{ total_hours: number; tasks: DailyTask[] } | null>(null);
   const [pending, setPending] = useState<any[]>([]);
   const [monthTasks, setMonthTasks] = useState<DailyTask[]>([]);
+  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'quarter' | 'year'>('month');
 
   useEffect(() => {
     if (isAdmin) {
-      api.get('/analytics/dashboard').then((r) => setAdmin(r.data)).catch(() => {});
+      api.get('/analytics/dashboard', { params: { period } }).then((r) => {
+        setAdmin(r.data);
+        const range = r.data?.range;
+        if (range?.from && range?.to) {
+          api.get('/daily-tasks', { params: { from: range.from, to: range.to } })
+            .then((rr) => setMonthTasks(rr.data || [])).catch(() => {});
+        }
+      }).catch(() => {});
       api.get('/reports/daily', { params: { type: 'pending', date: today() } }).then((r) => setPending(r.data || [])).catch(() => {});
-      api.get('/daily-tasks', { params: { from: monthStart(), to: today() } }).then((r) => setMonthTasks(r.data || [])).catch(() => {});
     } else {
       api.get('/daily-tasks/my/today').then((r) => setMyToday(r.data)).catch(() => {});
     }
-  }, [isAdmin]);
+  }, [isAdmin, period]);
+
+  const PERIODS: { key: typeof period; label: string }[] = [
+    { key: 'today',   label: 'Today' },
+    { key: 'week',    label: 'This Week' },
+    { key: 'month',   label: 'This Month' },
+    { key: 'quarter', label: 'This Quarter' },
+    { key: 'year',    label: 'This Year' },
+  ];
+
+  const periodLabel = PERIODS.find((p) => p.key === period)?.label || 'This Month';
+  const rangeFrom = admin?.range?.from;
+  const rangeTo   = admin?.range?.to;
 
   const hoursToday = Number(myToday?.total_hours || 0);
   const productivityPct = Math.min(100, Math.round((hoursToday / 8) * 100));
@@ -80,23 +99,38 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Hero greeting */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-6 md:p-8 relative overflow-hidden">
-        <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-brand-500/8 blur-3xl pointer-events-none" />
-        <div className="absolute -left-10 -bottom-10 h-56 w-56 rounded-full bg-cyan-500/8 blur-3xl pointer-events-none" />
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-6 md:p-8 relative">
+        <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+          <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-brand-500/8 blur-3xl" />
+          <div className="absolute -left-10 -bottom-10 h-56 w-56 rounded-full bg-cyan-500/8 blur-3xl" />
+        </div>
         <div className="relative flex flex-col md:flex-row md:items-end gap-6">
           <div className="flex-1">
-            <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">
+            <div className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
               {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
             </div>
             <h1 className="text-3xl md:text-4xl font-bold leading-tight">
               {greeting()}, <span className="text-grad">{user?.name?.split(' ')[0]}</span>
             </h1>
-            <p className="text-slate-500 mt-2">
+            <p className="text-slate-500 dark:text-slate-400 mt-2">
               {isAdmin
-                ? 'Here is what your team is shipping today.'
+                ? 'Here is what your team is shipping across the workspace.'
                 : 'Let’s make your day count — log every hour and watch your streak grow.'}
             </p>
+
           </div>
+
+          {isAdmin && (
+            <div className="flex flex-col items-stretch md:items-end gap-2 shrink-0">
+              <PeriodFilter period={period} setPeriod={setPeriod} options={PERIODS} />
+              {rangeFrom && rangeTo && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-500/10 border border-brand-100 dark:border-brand-500/20 text-[11px] text-brand-700 dark:text-brand-300 self-end">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
+                  Showing data for <strong className="font-semibold">{periodLabel.toLowerCase()}</strong> · {fmtDate(rangeFrom)} → {fmtDate(rangeTo)}
+                </div>
+              )}
+            </div>
+          )}
           {!isAdmin && (
             <div className="flex items-center gap-4">
               <div className="h-24 w-24">
@@ -659,4 +693,89 @@ function monthStart() {
 }
 function short(d: string) {
   return new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function PeriodFilter<T extends string>({
+  period, setPeriod, options,
+}: {
+  period: T;
+  setPeriod: (p: T) => void;
+  options: { key: T; label: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = options.find((o) => o.key === period);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onClick);
+    return () => window.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all
+          ${open ? 'bg-white dark:bg-white/[0.08] border-brand-500 shadow-[0_0_0_3px_rgba(124,58,237,0.18)]'
+                 : 'bg-white dark:bg-white/[0.04] border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'}`}
+      >
+        <CalendarRange size={15} className="text-brand-600 dark:text-brand-400" />
+        <span className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Period</span>
+        <span className="text-sm font-semibold text-slate-900 dark:text-white">{current?.label || 'This Month'}</span>
+        <ChevronDownIcon className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 mt-2 z-[60] w-56 rounded-xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden"
+          >
+            <div className="px-3 py-2 border-b border-slate-100 dark:border-white/10 text-[10px] uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400">
+              Select Period
+            </div>
+            {options.map((o) => (
+              <button
+                key={o.key}
+                onClick={() => { setPeriod(o.key); setOpen(false); }}
+                className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors ${
+                  o.key === period
+                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 font-semibold'
+                    : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/[0.05]'
+                }`}
+              >
+                <span>{o.label}</span>
+                {o.key === period && <CheckIcon className="text-brand-600 dark:text-brand-400" />}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ChevronDownIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+function CheckIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
 }
