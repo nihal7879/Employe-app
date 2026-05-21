@@ -37,6 +37,19 @@ export default function Tasks() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [filterDate]);
 
+  // Auto-calculate hours from start/end time
+  useEffect(() => {
+    if (form.start_time && form.end_time) {
+      const [sh, sm] = form.start_time.split(':').map(Number);
+      const [eh, em] = form.end_time.split(':').map(Number);
+      let mins = (eh * 60 + em) - (sh * 60 + sm);
+      if (mins < 0) mins += 24 * 60; // overnight
+      const hrs = (mins / 60).toFixed(2);
+      setForm((f) => ({ ...f, hours_spent: hrs }));
+    }
+    // eslint-disable-next-line
+  }, [form.start_time, form.end_time]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {

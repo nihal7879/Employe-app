@@ -5,12 +5,12 @@ import { ArrowUpRight, TrendingDown, TrendingUp } from 'lucide-react';
 import AnimatedNumber from './AnimatedNumber';
 
 const accents = {
-  brand: 'bg-brand-50 text-brand-600',
-  cyan:  'bg-cyan-50 text-cyan-600',
-  ok:    'bg-emerald-50 text-emerald-600',
-  warn:  'bg-amber-50 text-amber-600',
-  bad:   'bg-rose-50 text-rose-600',
-  pink:  'bg-pink-50 text-pink-600',
+  brand: 'bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300',
+  cyan:  'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-300',
+  ok:    'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
+  warn:  'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+  bad:   'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+  pink:  'bg-pink-50 text-pink-600 dark:bg-pink-500/15 dark:text-pink-300',
 } as const;
 
 const bars = {
@@ -66,15 +66,15 @@ export default function StatCard({
         </div>
 
         <div className="mt-5">
-          <div className="text-[28px] leading-none font-bold tracking-tight text-slate-900">
+          <div className="text-[28px] leading-none font-bold tracking-tight text-slate-900 dark:text-white">
             <AnimatedNumber value={value} format={format} />
           </div>
-          <div className="mt-2 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{label}</div>
-          {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+          <div className="mt-2 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">{label}</div>
+          {sub && <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">{sub}</div>}
         </div>
 
         {clickable && (
-          <div className="absolute top-4 right-4 h-7 w-7 rounded-lg bg-slate-50 group-hover:bg-brand-500 flex items-center justify-center text-slate-400 group-hover:text-white transition-all">
+          <div className="absolute top-4 right-4 h-7 w-7 rounded-lg bg-slate-50 dark:bg-white/[0.06] group-hover:bg-brand-500 flex items-center justify-center text-slate-400 dark:text-slate-400 group-hover:text-white transition-all">
             <ArrowUpRight size={14} />
           </div>
         )}

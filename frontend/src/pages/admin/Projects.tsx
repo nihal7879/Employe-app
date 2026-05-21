@@ -1,10 +1,28 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { Client, Project } from '../../types';
+import Modal from '../../components/Modal';
+import Select from '../../components/Select';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import DatePicker from '../../components/ui/DatePicker';
 
 const empty = { client_id: '', project_code: '', project_name: '', start_date: '', end_date: '', project_status: 'Active' };
+
+const STATUS_OPTIONS = [
+  { label: 'Active',    value: 'Active',    color: '#10B981' },
+  { label: 'Pending',   value: 'Pending',   color: '#F59E0B' },
+  { label: 'On Hold',   value: 'On Hold',   color: '#94A3B8' },
+  { label: 'Completed', value: 'Completed', color: '#06B6D4' },
+];
+
+const STATUS_PILL: Record<string, string> = {
+  Active: 'pill-ok',
+  Completed: 'pill-cyan',
+  Pending: 'pill-warn',
+  'On Hold': 'pill-soft',
+};
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -12,6 +30,7 @@ export default function Projects() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Project | null>(null);
   const [form, setForm] = useState<any>(empty);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
 
   const load = async () => {
     const [p, c] = await Promise.all([api.get('/projects'), api.get('/clients')]);
@@ -35,19 +54,31 @@ export default function Projects() {
       toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
     }
   };
-  const remove = async (id: number) => {
-    if (!confirm('Delete this project?')) return;
-    await api.delete(`/projects/${id}`); toast.success('Deleted'); load();
+
+  const remove = async () => {
+    if (confirmId == null) return;
+    try {
+      await api.delete(`/projects/${confirmId}`);
+      toast.success('Deleted'); load();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed');
+    }
   };
+
+  const clientOptions = clients.map((c) => ({ label: c.client_name, value: String(c.id) }));
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Projects</h1>
-        <button onClick={() => { setEditing(null); setForm(empty); setOpen(true); }} className="btn-primary">
-          <Plus size={16} className="mr-2" /> Add Project
+        <button
+          onClick={() => { setEditing(null); setForm(empty); setOpen(true); }}
+          className="btn-primary"
+        >
+          <Plus size={16} /> Add Project
         </button>
       </div>
+
       <div className="card p-4 overflow-x-auto">
         <table className="w-full">
           <thead><tr>
@@ -63,73 +94,106 @@ export default function Projects() {
             {projects.map((p) => (
               <tr key={p.id}>
                 <td className="table-td">{p.project_code}</td>
-                <td className="table-td font-medium">{p.project_name}</td>
+                <td className="table-td font-medium text-slate-900 dark:text-white">{p.project_name}</td>
                 <td className="table-td">{p.client_name}</td>
                 <td className="table-td">{p.start_date}</td>
                 <td className="table-td">{p.end_date}</td>
-                <td className="table-td">{p.project_status}</td>
-                <td className="table-td text-right space-x-2">
-                  <button onClick={() => {
-                    setEditing(p);
-                    setForm({
-                      client_id: String(p.client_id), project_code: p.project_code, project_name: p.project_name,
-                      start_date: p.start_date || '', end_date: p.end_date || '', project_status: p.project_status,
-                    });
-                    setOpen(true);
-                  }} className="text-brand-600"><Pencil size={16} /></button>
-                  <button onClick={() => remove(p.id)} className="text-red-600"><Trash2 size={16} /></button>
+                <td className="table-td"><span className={STATUS_PILL[p.project_status] || 'pill-soft'}>{p.project_status}</span></td>
+                <td className="table-td text-right space-x-1">
+                  <button
+                    onClick={() => {
+                      setEditing(p);
+                      setForm({
+                        client_id: String(p.client_id), project_code: p.project_code, project_name: p.project_name,
+                        start_date: p.start_date || '', end_date: p.end_date || '', project_status: p.project_status,
+                      });
+                      setOpen(true);
+                    }}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-500/15"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmId(p.id)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </td>
               </tr>
             ))}
-            {projects.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400">No projects.</td></tr>}
+            {projects.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No projects.</td></tr>}
           </tbody>
         </table>
       </div>
-      {open && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
-            <div className="flex items-center justify-between px-5 py-3 border-b">
-              <h3 className="font-semibold">{editing ? 'Edit Project' : 'Add Project'}</h3>
-              <button onClick={() => setOpen(false)}><X size={20} /></button>
-            </div>
-            <form onSubmit={submit} className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="label">Client</label>
-                <select className="input" required value={form.client_id} onChange={(e) => setForm({ ...form, client_id: e.target.value })}>
-                  <option value="">Select client</option>
-                  {clients.map((c) => <option key={c.id} value={c.id}>{c.client_name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Project Code</label>
-                <input className="input" required value={form.project_code} onChange={(e) => setForm({ ...form, project_code: e.target.value })} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label">Project Name</label>
-                <input className="input" required value={form.project_name} onChange={(e) => setForm({ ...form, project_name: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Start Date</label>
-                <input type="date" className="input" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">End Date</label>
-                <input type="date" className="input" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Status</label>
-                <select className="input" value={form.project_status} onChange={(e) => setForm({ ...form, project_status: e.target.value })}>
-                  <option>Active</option><option>Completed</option><option>Pending</option><option>On Hold</option>
-                </select>
-              </div>
-              <div className="sm:col-span-2 flex justify-end gap-2">
-                <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
-                <button type="submit" className="btn-primary">{editing ? 'Update' : 'Create'}</button>
-              </div>
-            </form>
+
+      <Modal open={open} title={editing ? 'Edit Project' : 'Add Project'} onClose={() => setOpen(false)} size="lg">
+        <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div>
+            <label className="label">Client</label>
+            <Select
+              value={form.client_id}
+              options={clientOptions}
+              onChange={(v) => setForm({ ...form, client_id: v })}
+              placeholder="Select client"
+            />
           </div>
-        </div>
-      )}
+          <div>
+            <label className="label">Project Code</label>
+            <input
+              required
+              placeholder="e.g. ADF-001"
+              value={form.project_code}
+              onChange={(e) => setForm({ ...form, project_code: e.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">Project Name</label>
+            <input
+              required
+              placeholder="e.g. Kali Loader"
+              value={form.project_name}
+              onChange={(e) => setForm({ ...form, project_name: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="label">Start Date</label>
+            <DatePicker
+              value={form.start_date}
+              onChange={(v) => setForm({ ...form, start_date: v })}
+            />
+          </div>
+          <div>
+            <label className="label">End Date</label>
+            <DatePicker
+              value={form.end_date}
+              onChange={(v) => setForm({ ...form, end_date: v })}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="label">Status</label>
+            <Select
+              value={form.project_status}
+              options={STATUS_OPTIONS}
+              onChange={(v) => setForm({ ...form, project_status: v })}
+            />
+          </div>
+          <div className="sm:col-span-2 flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">
+            <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+            <button type="submit" className="btn-primary">{editing ? 'Update' : 'Create'}</button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title="Delete this project?"
+        message="The project will be hidden from new task entries. Existing tasks logged against it remain intact."
+        confirmLabel="Delete"
+        danger
+        onConfirm={remove}
+        onClose={() => setConfirmId(null)}
+      />
     </div>
   );
 }

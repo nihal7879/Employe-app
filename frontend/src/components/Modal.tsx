@@ -43,11 +43,11 @@ export default function Modal({
               exit={{ opacity: 0, y: 8, scale: 0.96 }}
               transition={{ type: 'spring', stiffness: 320, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
-              className={`bg-white rounded-2xl shadow-2xl border border-slate-200 w-full ${widths[size]} pointer-events-auto overflow-hidden`}
+              className={`bg-white dark:bg-bg-deep rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 w-full ${widths[size]} pointer-events-auto`}
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <h3 className="font-semibold text-slate-900">{title}</h3>
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-700">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-white/10">
+                <h3 className="font-semibold text-slate-900 dark:text-white">{title}</h3>
+                <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-white">
                   <X size={20} />
                 </button>
               </div>

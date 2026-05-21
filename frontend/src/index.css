@@ -6,41 +6,59 @@
 
 html, body, #root { height: 100%; }
 
+/* ===== Light (default) ===== */
 body {
   @apply text-slate-900 antialiased;
-  background:
-    radial-gradient(at 10% 0%,  rgba(124,58,237,0.06) 0px, transparent 50%),
-    radial-gradient(at 92% 8%,  rgba(6,182,212,0.05) 0px, transparent 55%),
-    #F6F7FB;
-  background-attachment: fixed;
+  background-color: #F4F5F8;
 }
+
+/* ===== Dark ===== */
+.dark body {
+  @apply text-slate-100;
+  background-color: #0B1020;
+}
+
+.app-sidebar      { background: #FFFFFF; }
+.dark .app-sidebar { background: #0F1428; }
+
+.app-main         { background: #F4F5F8; }
+.dark .app-main   { background: #0B1020; }
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.10); border-radius: 8px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.20); }
+.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
 
-::selection { background: rgba(124,58,237,0.18); color: inherit; }
+::selection { background: rgba(124,58,237,0.20); color: inherit; }
+.dark ::selection { background: rgba(124,58,237,0.45); color: #fff; }
 
 @layer components {
-  /* Surfaces */
+  /* ---- Surfaces ---- */
   .card {
     @apply bg-white border border-slate-200/70 rounded-2xl
-           shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)];
+           shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)]
+           dark:bg-white/[0.04] dark:border-white/10
+           dark:shadow-[0_4px_24px_rgba(0,0,0,0.35)];
   }
   .card-hover {
     @apply transition-all duration-300
-           hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_16px_40px_-12px_rgba(15,23,42,0.14)] hover:-translate-y-0.5;
+           hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_16px_40px_-12px_rgba(15,23,42,0.14)] hover:-translate-y-0.5
+           dark:hover:bg-white/[0.07] dark:hover:border-white/20
+           dark:hover:shadow-[0_8px_32px_rgba(124,58,237,0.20)];
   }
   .glass {
-    @apply bg-white/85 backdrop-blur-xl border border-slate-200/70;
+    @apply bg-white/85 backdrop-blur-xl border border-slate-200/70
+           dark:bg-white/[0.04] dark:border-white/10;
   }
   .glass-strong {
-    @apply bg-white/95 backdrop-blur-2xl border border-slate-200;
+    @apply bg-white/95 backdrop-blur-2xl border border-slate-200
+           dark:bg-white/[0.08] dark:border-white/15;
   }
 
-  /* Buttons */
+  /* ---- Buttons ---- */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 select-none;
   }
@@ -50,51 +68,85 @@ body {
            hover:shadow-[0_6px_18px_-2px_rgba(124,58,237,0.55)] hover:scale-[1.02] active:scale-[0.99];
   }
   .btn-secondary {
-    @apply btn bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300;
+    @apply btn bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300
+           dark:bg-white/[0.06] dark:border-white/10 dark:text-slate-100
+           dark:hover:bg-white/[0.10] dark:hover:border-white/20;
   }
   .btn-ghost {
-    @apply btn text-slate-600 hover:text-slate-900 hover:bg-slate-100;
+    @apply btn text-slate-600 hover:text-slate-900 hover:bg-slate-100
+           dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06];
   }
   .btn-danger {
     @apply btn bg-red-500 text-white hover:bg-red-600;
   }
 
-  /* Inputs */
+  /* ---- Inputs (legacy native) ---- */
   .input,
-  input[type="text"], input[type="email"], input[type="password"],
-  input[type="number"], input[type="date"], input[type="time"],
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="submit"]):not([type="button"]):not([type="image"]),
   textarea, select {
     @apply w-full rounded-xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400
            px-3.5 py-2.5 text-sm appearance-none
-           focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 transition-colors;
+           focus:bg-white focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 transition-colors
+           dark:bg-white/[0.04] dark:border-white/10 dark:text-slate-100 dark:placeholder:text-slate-500
+           dark:focus:bg-white/[0.06] dark:focus:border-brand-500/70 dark:focus:ring-brand-500/30;
     outline: none !important;
     -webkit-tap-highlight-color: transparent;
   }
-  input:focus, textarea:focus, select:focus { outline: none !important; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18); border-color: #8B5CF6 !important; }
+  input:focus, textarea:focus, select:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
+    border-color: #8B5CF6 !important;
+  }
+  /* Force dark mode input bg (override browser/autofill defaults) */
+  .dark input, .dark textarea, .dark select {
+    background-color: rgba(255,255,255,0.04) !important;
+    color: #F1F5F9 !important;
+  }
+  .dark input::placeholder,
+  .dark textarea::placeholder { color: rgba(148,163,184,0.6) !important; }
+  /* Autofill — match dark background */
+  .dark input:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px #1a1f3a inset !important;
+    -webkit-text-fill-color: #F1F5F9 !important;
+    caret-color: #F1F5F9;
+  }
   select option { @apply bg-white text-slate-900; }
-  .label { @apply block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5; }
+  .dark select option { background: #0B1020; color: #F8FAFC; }
+  .label {
+    @apply block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5
+           dark:text-slate-400;
+  }
 
-  /* Tables */
+  /* ---- Tables ---- */
   .table-th {
     @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 bg-slate-50/80
-           border-b border-slate-200/80 first:rounded-tl-xl last:rounded-tr-xl;
+           border-b border-slate-200/80 first:rounded-tl-xl last:rounded-tr-xl
+           dark:text-slate-400 dark:bg-white/[0.03] dark:border-white/10;
   }
   .table-td {
-    @apply px-4 py-3 text-sm text-slate-700 border-b border-slate-100;
+    @apply px-4 py-3 text-sm text-slate-700 border-b border-slate-100
+           dark:text-slate-300 dark:border-white/[0.06];
   }
-  tbody tr { @apply transition-colors hover:bg-slate-50/70; }
+  tbody tr { @apply transition-colors hover:bg-slate-50/70 dark:hover:bg-white/[0.03]; }
 
-  /* Pills */
+  /* ---- Pills ---- */
   .pill { @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border; }
-  .pill-ok    { @apply pill bg-emerald-50 text-emerald-700 border-emerald-200; }
-  .pill-warn  { @apply pill bg-amber-50  text-amber-700  border-amber-200; }
-  .pill-bad   { @apply pill bg-rose-50   text-rose-700   border-rose-200; }
-  .pill-brand { @apply pill bg-brand-50  text-brand-700  border-brand-100; }
-  .pill-cyan  { @apply pill bg-cyan-50   text-cyan-700   border-cyan-100; }
-  .pill-soft  { @apply pill bg-slate-100 text-slate-700  border-slate-200; }
+  .pill-ok    { @apply pill bg-emerald-50 text-emerald-700 border-emerald-200
+                           dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30; }
+  .pill-warn  { @apply pill bg-amber-50 text-amber-700 border-amber-200
+                           dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30; }
+  .pill-bad   { @apply pill bg-rose-50 text-rose-700 border-rose-200
+                           dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30; }
+  .pill-brand { @apply pill bg-brand-50 text-brand-700 border-brand-100
+                           dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30; }
+  .pill-cyan  { @apply pill bg-cyan-50 text-cyan-700 border-cyan-100
+                           dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30; }
+  .pill-soft  { @apply pill bg-slate-100 text-slate-700 border-slate-200
+                           dark:bg-white/[0.06] dark:text-slate-200 dark:border-white/10; }
 
   .text-grad {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-600 via-fuchsia-500 to-cyan-500;
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-600 via-fuchsia-500 to-cyan-500
+           dark:from-brand-400 dark:via-fuchsia-400 dark:to-cyan-400;
   }
 
   .skeleton {
@@ -102,5 +154,9 @@ body {
     background: linear-gradient(90deg, rgba(15,23,42,0.04), rgba(15,23,42,0.10), rgba(15,23,42,0.04));
     background-size: 200% 100%;
     @apply animate-shimmer;
+  }
+  .dark .skeleton {
+    background: linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+    background-size: 200% 100%;
   }
 }

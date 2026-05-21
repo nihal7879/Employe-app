@@ -28,37 +28,38 @@ export default function Sidebar() {
     <motion.aside
       animate={{ width: collapsed ? 76 : 240 }}
       transition={{ type: 'spring', stiffness: 260, damping: 28 }}
-      className="hidden md:flex flex-col bg-white border-r border-slate-200/70 relative"
+      className="hidden md:flex flex-col app-sidebar border-r border-slate-200/70 dark:border-white/10 relative"
     >
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-200/70 overflow-visible bg-white relative">
-        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-600 to-cyan-500 flex items-center justify-center text-white font-extrabold text-[13px] tracking-tight shadow-[0_4px_14px_-4px_rgba(124,58,237,0.5)] shrink-0">
+      <div className="flex items-center gap-3 px-4 h-16 border-b border-slate-200/70 dark:border-white/10">
+        <button
+          type="button"
+          onClick={() => collapsed && setCollapsed(false)}
+          title={collapsed ? 'Expand sidebar' : 'Millicent Technology'}
+          className="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-600 to-cyan-500 flex items-center justify-center text-white font-extrabold text-[13px] tracking-tight shadow-[0_4px_14px_-4px_rgba(124,58,237,0.5)] shrink-0 cursor-pointer hover:scale-105 transition-transform"
+        >
           MT
-        </div>
+        </button>
         <AnimatePresence>
           {!collapsed && (
             <motion.div
               initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}
               className="flex-1 min-w-0"
             >
-              <div className="text-sm font-bold leading-tight">Millicent</div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 font-medium">Technology</div>
+              <div className="text-sm font-bold leading-tight text-slate-900 dark:text-white">Millicent</div>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-medium">Technology</div>
             </motion.div>
           )}
         </AnimatePresence>
+        {!collapsed && (
+          <button
+            onClick={() => setCollapsed(true)}
+            title="Collapse sidebar"
+            className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors"
+          >
+            <ChevronLeft size={16} strokeWidth={2.5} />
+          </button>
+        )}
       </div>
-
-      {/* Floating collapse toggle — top right corner of the sidebar */}
-      <button
-        onClick={() => setCollapsed((c) => !c)}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="absolute -top-1 -right-3.5 z-20 h-7 w-7 rounded-full bg-white border border-slate-200 shadow-[0_4px_10px_-2px_rgba(15,23,42,0.18)]
-                   flex items-center justify-center text-slate-600
-                   hover:bg-brand-600 hover:text-white hover:border-brand-600 hover:shadow-[0_4px_14px_-2px_rgba(124,58,237,0.5)] transition-all"
-      >
-        <motion.span animate={{ rotate: collapsed ? 180 : 0 }} transition={{ duration: 0.25 }} className="flex">
-          <ChevronLeft size={16} strokeWidth={2.5} />
-        </motion.span>
-      </button>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {visible.map((item) => (
@@ -69,8 +70,8 @@ export default function Sidebar() {
             className={({ isActive }) =>
               `group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
-                  ? 'text-brand-700'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  ? 'text-brand-700 dark:text-white'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.04]'
               }`
             }
           >
@@ -79,7 +80,7 @@ export default function Sidebar() {
                 {isActive && (
                   <motion.span
                     layoutId="active-pill"
-                    className="absolute inset-0 rounded-xl bg-brand-50 -z-10"
+                    className="absolute inset-0 rounded-xl bg-brand-50 dark:bg-white/[0.08] -z-10"
                     transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                   />
                 )}

@@ -8,7 +8,7 @@ export default {
         bg: { DEFAULT: '#0B1020', deep: '#070A18' },
         surface: { DEFAULT: 'rgba(255,255,255,0.06)', strong: 'rgba(255,255,255,0.10)' },
         ink:    { DEFAULT: '#F8FAFC', mute: '#94A3B8', soft: '#CBD5E1' },
-        brand:  { 50: '#F5F3FF', 100:'#EDE9FE', 400:'#A78BFA', 500:'#8B5CF6', 600:'#7C3AED', 700:'#6D28D9' },
+        brand:  { 50: '#F5F3FF', 100:'#EDE9FE', 200:'#DDD6FE', 300:'#C4B5FD', 400:'#A78BFA', 500:'#8B5CF6', 600:'#7C3AED', 700:'#6D28D9', 800:'#5B21B6', 900:'#4C1D95' },
         cyan2:  { 400:'#22D3EE', 500:'#06B6D4', 600:'#0891B2' },
         ok:     { DEFAULT: '#22C55E' },
         warn:   { DEFAULT: '#F59E0B' },

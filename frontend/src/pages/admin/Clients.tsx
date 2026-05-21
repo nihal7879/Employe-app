@@ -95,14 +95,15 @@ export default function Clients() {
         </table>
       </div>
 
-      <Modal open={open} title={editing ? 'Edit Client' : 'Add Client'} onClose={() => setOpen(false)} size="md">
-        <form onSubmit={submit} className="space-y-4">
+      <Modal open={open} title={editing ? 'Edit Client' : 'Add Client'} onClose={() => setOpen(false)} size="lg">
+        <form onSubmit={submit} className="space-y-5">
           <div>
             <label className="label">Client Name</label>
             <input
-              required value={form.client_name}
-              onChange={(e) => setForm({ ...form, client_name: e.target.value })}
+              required
               placeholder="e.g. Sundaram"
+              value={form.client_name}
+              onChange={(e) => setForm({ ...form, client_name: e.target.value })}
             />
           </div>
           <div>
@@ -113,7 +114,7 @@ export default function Clients() {
               onChange={(v) => setForm({ ...form, status: v })}
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">
             <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
             <button type="submit" className="btn-primary">{editing ? 'Update' : 'Create'}</button>
           </div>

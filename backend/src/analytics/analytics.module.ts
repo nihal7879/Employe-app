@@ -28,7 +28,11 @@ class AnalyticsService {
       topClients,
       topEmployees,
     ] = await Promise.all([
-      this.db('employees').where({ is_active: true, is_deleted: false }).count<{ c: number }[]>({ c: '*' }).first(),
+      this.db('employees')
+        .leftJoin('roles', 'employees.role_id', 'roles.id')
+        .where({ 'employees.is_active': true, 'employees.is_deleted': false })
+        .whereNot('roles.role_name', 'Admin')
+        .count<{ c: number }[]>({ c: '*' }).first(),
       this.db('clients').where({ is_active: true, is_deleted: false }).count<{ c: number }[]>({ c: '*' }).first(),
       this.db('projects').where({ is_active: true, is_deleted: false, project_status: 'Active' }).count<{ c: number }[]>({ c: '*' }).first(),
       this.db('daily_tasks').where({ is_deleted: false, task_date: today }).sum({ hours: 'hours_spent' }).count({ tasks: '*' }).first(),

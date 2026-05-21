@@ -136,75 +136,197 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Daily trend line + Activity pie */}
+      {/* Submission compliance + Hours by weekday + Activity pie */}
       {isAdmin && admin && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 lg:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="font-semibold">Daily productivity trend</div>
-                <div className="text-xs text-slate-500">Hours logged over the last 30 days</div>
-              </div>
-              <span className="pill-brand"><TrendingUp size={12} /> 30d</span>
-            </div>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={dailyTrend} margin={{ left: -10, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="line-h" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="#7C3AED" /><stop offset="100%" stopColor="#06B6D4" />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
-                <XAxis dataKey="date" stroke="#94A3B8" tick={{ fontSize: 11 }} />
-                <YAxis stroke="#94A3B8" tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Line type="monotone" dataKey="hours" stroke="url(#line-h)" strokeWidth={3} dot={{ r: 3, fill: '#7C3AED' }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="tasks" stroke="#10B981" strokeWidth={2} dot={false} strokeDasharray="4 4" />
-              </LineChart>
-            </ResponsiveContainer>
-            <div className="flex gap-4 text-xs text-slate-500 mt-1">
-              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-brand-600" /> Hours</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Tasks</span>
-            </div>
+          {/* Submission compliance — premium donut */}
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+            {(() => {
+              const totalEmp = Number(admin.counts.active_employees || 0);
+              const pendingCount = Number(admin.counts.pending_submissions || 0);
+              const submittedCount = Math.max(0, totalEmp - pendingCount);
+              const pct = totalEmp > 0 ? Math.round((submittedCount / totalEmp) * 100) : 0;
+              const data = [
+                { name: 'Submitted', value: submittedCount, fill: '#10B981' },
+                { name: 'Pending',   value: pendingCount,   fill: '#EF4444' },
+              ].filter((d) => d.value > 0);
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <div className="font-semibold">Today's submissions</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} have logged</div>
+                    </div>
+                    <span className={pct >= 80 ? 'pill-ok' : pct >= 50 ? 'pill-warn' : 'pill-bad'}>{pct}%</span>
+                  </div>
+                  <div className="relative h-52">
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Pie
+                          data={data.length ? data : [{ name: 'empty', value: 1, fill: 'rgba(15,23,42,0.06)' }]}
+                          dataKey="value" nameKey="name"
+                          innerRadius="68%" outerRadius="100%"
+                          paddingAngle={data.length > 1 ? 4 : 0}
+                          cornerRadius={8}
+                          stroke="transparent"
+                          startAngle={90}
+                          endAngle={-270}
+                        >
+                          {(data.length ? data : [{ fill: 'rgba(15,23,42,0.06)' }]).map((d: any, i: number) => (
+                            <Cell key={i} fill={d.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(v: any, n: any) => [`${v} employee${v === 1 ? '' : 's'}`, n]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-semibold">Compliance</div>
+                      <div className="text-4xl font-bold tabular-nums leading-none mt-1">{pct}%</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 tabular-nums">{submittedCount} / {totalEmp}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 px-3 py-2">
+                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-semibold">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" /> Submitted
+                      </div>
+                      <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{submittedCount}</div>
+                    </div>
+                    <div className="rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 px-3 py-2">
+                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-rose-700 dark:text-rose-300 font-semibold">
+                        <span className="h-2 w-2 rounded-full bg-rose-500" /> Pending
+                      </div>
+                      <div className="text-xl font-bold text-rose-700 dark:text-rose-300 tabular-nums">{pendingCount}</div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="font-semibold">Activity mix</div>
-                <div className="text-xs text-slate-500">Where time is going</div>
-              </div>
-              <span className="pill-cyan"><ActivityIcon size={12} /> Month</span>
-            </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={admin.activity_distribution || []}
-                  dataKey="total_hours"
-                  nameKey="activity_name"
-                  innerRadius={55}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  stroke="#fff"
-                  strokeWidth={2}
-                >
-                  {(admin.activity_distribution || []).map((_: any, i: number) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
-              {(admin.activity_distribution || []).slice(0, 6).map((a: any, i: number) => (
-                <div key={i} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                  {a.activity_name}
-                </div>
-              ))}
-            </div>
+          {/* Hours by day of week */}
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 lg:col-span-2">
+            {(() => {
+              const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              const buckets = Array(7).fill(0).map((_, i) => ({ day: dows[i], hours: 0, tasks: 0 }));
+              for (const t of monthTasks) {
+                const d = new Date(t.task_date);
+                const idx = (d.getDay() + 6) % 7; // Monday=0
+                buckets[idx].hours += Number(t.hours_spent || 0);
+                buckets[idx].tasks += 1;
+              }
+              const topDay = [...buckets].sort((a, b) => b.hours - a.hours)[0];
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <div className="font-semibold">Hours by weekday</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {topDay?.hours > 0 ? <>Peak day: <strong>{topDay.day}</strong> — {topDay.hours.toFixed(1)}h this month</> : 'No data yet'}
+                      </div>
+                    </div>
+                    <span className="pill-brand"><TrendingUp size={12} /> Month</span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={buckets} margin={{ left: -10, right: 8, top: 8 }}>
+                      <defs>
+                        <linearGradient id="dow" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#7C3AED" />
+                          <stop offset="100%" stopColor="#06B6D4" stopOpacity={0.6} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
+                      <XAxis dataKey="day" stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                      <YAxis stroke="#94A3B8" tick={{ fontSize: 11 }} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => `${Number(v).toFixed(1)}h`} />
+                      <Bar dataKey="hours" radius={[8, 8, 0, 0]} fill="url(#dow)" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
+              );
+            })()}
           </motion.div>
         </div>
+      )}
+
+      {/* Activity mix — horizontal bar leaderboard */}
+      {isAdmin && admin && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 md:p-6">
+          {(() => {
+            const acts = [...(admin.activity_distribution || [])]
+              .map((a: any) => ({ ...a, total_hours: Number(a.total_hours || 0) }))
+              .sort((a, b) => b.total_hours - a.total_hours);
+            const total = acts.reduce((s, x) => s + x.total_hours, 0);
+            const max = Math.max(...acts.map((a) => a.total_hours), 0);
+
+            return (
+              <>
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5">
+                  <div>
+                    <h3 className="font-semibold text-lg">Activity composition</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Where the team's time is going this month — {total.toFixed(1)}h total across {acts.length} activit{acts.length === 1 ? 'y' : 'ies'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {acts.slice(0, 4).map((a, i) => (
+                      <span
+                        key={a.activity_name}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                        {a.activity_name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4 px-1">
+                    <span>Activity · share of total hours</span>
+                    <span>Hours</span>
+                  </div>
+
+                  {acts.length === 0 ? (
+                    <div className="text-sm text-slate-400 py-6 text-center">No activity data yet.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {acts.map((a, i) => {
+                        const pct = total ? Math.round((a.total_hours / total) * 100) : 0;
+                        const widthPct = max ? (a.total_hours / max) * 100 : 0;
+                        const color = COLORS[i % COLORS.length];
+                        return (
+                          <div key={a.activity_name} className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 w-40 shrink-0">
+                              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
+                              <span className="text-sm font-medium text-slate-900 dark:text-white truncate">{a.activity_name}</span>
+                            </div>
+                            <div className="flex-1 h-3 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${widthPct}%` }}
+                                transition={{ duration: 0.9, ease: 'easeOut', delay: i * 0.05 }}
+                                className="h-full rounded-full"
+                                style={{ background: `linear-gradient(90deg, ${color}, ${color}cc)` }}
+                              />
+                            </div>
+                            <div className="w-24 text-right tabular-nums">
+                              <span className="text-sm font-bold text-slate-900 dark:text-white">{a.total_hours.toFixed(1)}h</span>
+                              <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{pct}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </motion.div>
       )}
 
       {/* Top projects bar + top clients bar */}
@@ -265,51 +387,60 @@ export default function Dashboard() {
       {/* Project activity breakdown segmented bars */}
       {isAdmin && projectSegments.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 md:p-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5">
             <div>
-              <div className="font-semibold">Project · activity breakdown</div>
-              <div className="text-xs text-slate-500">{projectSegments.length} projects · hours split by activity</div>
+              <h3 className="font-semibold text-lg">Activity composition by project</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {projectSegments.length} project{projectSegments.length === 1 ? '' : 's'} — hours split by activity type
+              </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap gap-2">
               {Object.entries(activityColorMap).slice(0, 6).map(([label, color]) => (
-                <span key={label} className="inline-flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <span className="h-2 w-2 rounded-full" style={{ background: color }} /> {label}
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200"
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ background: color }} />
+                  {label}
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="grid grid-cols-12 text-[11px] uppercase tracking-wider text-slate-500 px-1">
-              <div className="col-span-4">Project</div>
-              <div className="col-span-7">Breakdown</div>
-              <div className="col-span-1 text-right">Hours</div>
+          <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+            <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4 px-1">
+              <span>Project · activity breakdown</span>
+              <span>Hours</span>
             </div>
-            {projectSegments.map((p) => {
-              const segs: Segment[] = Object.entries(p.perActivity).map(([label, value]) => ({
-                label, value: Number(value), color: activityColorMap[label],
-              }));
-              return (
-                <div key={p.project_name} className="grid grid-cols-12 items-center gap-3 py-2 border-t border-slate-100">
-                  <div className="col-span-4 min-w-0">
-                    <div className="font-medium text-slate-900 truncate">{p.project_name}</div>
-                    <div className="text-xs text-slate-500 flex flex-wrap gap-3 mt-1">
-                      {segs.slice(0, 4).map((s) => (
+
+            <div className="space-y-6">
+              {projectSegments.map((p) => {
+                const segs: Segment[] = Object.entries(p.perActivity).map(([label, value]) => ({
+                  label, value: Number(value), color: activityColorMap[label],
+                }));
+                return (
+                  <div key={p.project_name}>
+                    <div className="flex items-baseline justify-between mb-2 gap-3">
+                      <div className="font-semibold text-slate-900 dark:text-white truncate">{p.project_name}</div>
+                      <div className="text-sm tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
+                        <span className="font-bold text-slate-900 dark:text-white">{p.total_hours.toFixed(1)}h</span>
+                        <span className="text-slate-400 dark:text-slate-500"> · {p.tasks} task{p.tasks === 1 ? '' : 's'}</span>
+                      </div>
+                    </div>
+                    <SegmentedBar segments={segs} height={14} />
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                      {segs.map((s) => (
                         <span key={s.label} className="inline-flex items-center gap-1.5">
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
-                          {s.value.toFixed(1)}h {s.label}
+                          <span className="font-semibold tabular-nums">{s.value.toFixed(1)}h</span>
+                          <span className="text-slate-500 dark:text-slate-400">{s.label}</span>
                         </span>
                       ))}
                     </div>
                   </div>
-                  <div className="col-span-7"><SegmentedBar segments={segs} height={14} /></div>
-                  <div className="col-span-1 text-right">
-                    <div className="font-bold tabular-nums">{p.total_hours.toFixed(1)}</div>
-                    <div className="text-[10px] text-slate-500">{p.tasks} tasks</div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </motion.div>
       )}
@@ -352,37 +483,73 @@ export default function Dashboard() {
               </div>
               <div>
                 <div className="font-semibold">Hours by client</div>
-                <div className="text-xs text-slate-500">Distribution this month</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Distribution this month</div>
               </div>
               <span className="ml-auto pill-cyan">{(admin?.top_clients || []).length}</span>
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={admin?.top_clients || []}
-                  dataKey="total_hours"
-                  nameKey="client_name"
-                  innerRadius={55}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  stroke="#fff"
-                  strokeWidth={2}
-                >
-                  {(admin?.top_clients || []).map((_: any, i: number) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
-              {(admin?.top_clients || []).map((c: any, i: number) => (
-                <div key={i} className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                  {c.client_name} · <span className="tabular-nums">{Number(c.total_hours).toFixed(1)}h</span>
-                </div>
-              ))}
-            </div>
+            {(() => {
+              const clientsSorted = [...(admin?.top_clients || [])]
+                .filter((c) => Number(c.total_hours) > 0)
+                .sort((a, b) => Number(b.total_hours) - Number(a.total_hours));
+              const total = clientsSorted.reduce((s, c) => s + Number(c.total_hours || 0), 0);
+              const top = clientsSorted[0];
+              if (clientsSorted.length === 0) {
+                return <div className="text-center text-sm text-slate-400 py-12">No client hours logged yet.</div>;
+              }
+              return (
+                <>
+                  <div className="relative h-52">
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Pie
+                          data={clientsSorted}
+                          dataKey="total_hours"
+                          nameKey="client_name"
+                          innerRadius={70}
+                          outerRadius={100}
+                          paddingAngle={clientsSorted.length > 1 ? 4 : 0}
+                          cornerRadius={clientsSorted.length > 1 ? 8 : 0}
+                          startAngle={90}
+                          endAngle={-270}
+                          stroke="transparent"
+                        >
+                          {clientsSorted.map((_: any, i: number) => (
+                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={TOOLTIP_STYLE}
+                          formatter={(v: any, _n, p: any) => [`${Number(v).toFixed(1)}h`, p?.payload?.client_name]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    {top && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-semibold">Top client</div>
+                        <div className="text-base font-bold text-slate-900 dark:text-white truncate max-w-[110px] text-center mt-0.5">{top.client_name}</div>
+                        <div className="text-2xl font-bold text-brand-600 dark:text-brand-300 tabular-nums leading-none mt-1">
+                          {Number(top.total_hours).toFixed(1)}<span className="text-xs text-slate-400 dark:text-slate-500 font-medium"> h</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1">{total ? Math.round((top.total_hours / total) * 100) : 0}% of total</div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                    {clientsSorted.map((c: any, i: number) => {
+                      const pct = Math.round((Number(c.total_hours) / (total || 1)) * 100);
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-xs px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-white/[0.04]">
+                          <span className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-white dark:ring-bg-deep" style={{ background: COLORS[i % COLORS.length] }} />
+                          <span className="flex-1 truncate text-slate-700 dark:text-slate-300">{c.client_name}</span>
+                          <span className="tabular-nums font-semibold text-slate-900 dark:text-white">{Number(c.total_hours).toFixed(1)}h</span>
+                          <span className="tabular-nums text-slate-400 w-8 text-right">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
           </motion.div>
 
           <motion.div
