@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
-  FolderKanban, ListChecks, Mail, ChevronLeft, CalendarSearch, Timer,
+  FolderKanban, ListChecks, Mail, ChevronLeft, CalendarSearch, Timer, Bell,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
@@ -11,6 +11,7 @@ const items = [
   { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false },
   { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true  },
   { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true  },
+  { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: true  },
   { to: '/admin/clients',    icon: Building2,       label: 'Clients',       admin: true,  hideForAdmin: false },
   { to: '/admin/projects',   icon: FolderKanban,    label: 'Projects',      admin: true,  hideForAdmin: false },
   { to: '/admin/employees',  icon: Users,           label: 'Employees',     admin: true,  hideForAdmin: false },
