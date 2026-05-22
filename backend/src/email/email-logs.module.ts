@@ -3,6 +3,7 @@ import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 
 @Injectable()
 class EmailLogsService {
@@ -13,6 +14,9 @@ class EmailLogsService {
     if (params.email_type) q = q.where('email_type', params.email_type);
     return q.limit(Number(params.limit || 200));
   }
+  listForEmail(email: string, limit = 30) {
+    return this.db('email_logs').where('email_to', email).orderBy('created_at', 'desc').limit(limit);
+  }
 }
 
 @Controller('email-logs')
@@ -20,6 +24,14 @@ class EmailLogsService {
 @Roles('Admin')
 class EmailLogsController {
   constructor(private readonly s: EmailLogsService) {}
+
+  // Current user's own notifications (any authenticated role).
+  @Get('mine')
+  @Roles('Admin', 'Employee')
+  mine(@CurrentUser() user: AuthUser) {
+    return this.s.listForEmail(user.email);
+  }
+
   @Get()
   list(@Query('status') status?: string, @Query('email_type') email_type?: string, @Query('limit') limit?: number) {
     return this.s.list({ status, email_type, limit });

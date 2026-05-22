@@ -193,13 +193,13 @@ export default function Dashboard() {
                     </div>
                     <span className={pct >= 80 ? 'pill-ok' : pct >= 50 ? 'pill-warn' : 'pill-bad'}>{pct}%</span>
                   </div>
-                  <div className="relative h-52">
+                  <div className="relative h-52 mx-auto w-full max-w-[200px]">
                     <ResponsiveContainer>
                       <PieChart>
                         <Pie
                           data={data.length ? data : [{ name: 'empty', value: 1, fill: 'rgba(15,23,42,0.06)' }]}
                           dataKey="value" nameKey="name"
-                          innerRadius="68%" outerRadius="100%"
+                          innerRadius="80%" outerRadius="100%"
                           paddingAngle={data.length > 1 ? 4 : 0}
                           cornerRadius={8}
                           stroke="transparent"
@@ -517,14 +517,15 @@ export default function Dashboard() {
               </div>
               <div>
                 <div className="font-semibold">Hours by client</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">Distribution this month</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">Distribution · {periodLabel.toLowerCase()}</div>
               </div>
               <span className="ml-auto pill-cyan">{(admin?.top_clients || []).length}</span>
             </div>
             {(() => {
               const clientsSorted = [...(admin?.top_clients || [])]
-                .filter((c) => Number(c.total_hours) > 0)
-                .sort((a, b) => Number(b.total_hours) - Number(a.total_hours));
+                .map((c) => ({ ...c, total_hours: Number(c.total_hours) || 0 }))
+                .filter((c) => c.total_hours > 0)
+                .sort((a, b) => b.total_hours - a.total_hours);
               const total = clientsSorted.reduce((s, c) => s + Number(c.total_hours || 0), 0);
               const top = clientsSorted[0];
               if (clientsSorted.length === 0) {
@@ -551,10 +552,6 @@ export default function Dashboard() {
                             <Cell key={i} fill={COLORS[i % COLORS.length]} />
                           ))}
                         </Pie>
-                        <Tooltip
-                          contentStyle={TOOLTIP_STYLE}
-                          formatter={(v: any, _n, p: any) => [`${Number(v).toFixed(1)}h`, p?.payload?.client_name]}
-                        />
                       </PieChart>
                     </ResponsiveContainer>
                     {top && (

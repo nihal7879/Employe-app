@@ -26,20 +26,22 @@ export default function Notifications() {
   const ctrl = 'relative h-10 w-10 rounded-xl flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:bg-white/[0.04] dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.10] dark:hover:text-white transition-colors';
 
   const load = async () => {
-    if (!isAdmin) {
-      // Employees: only show emails sent to them
-      try {
-        const r = await api.get('/email-logs', { params: { limit: 20 } });
-        const mine = (r.data || []).filter((l: EmailLog) => l.email_to === user?.email).slice(0, 10);
-        setLogs(mine);
-      } catch { setLogs([]); }
-    } else {
-      try {
-        const r = await api.get('/email-logs', { params: { limit: 10 } });
-        setLogs(r.data || []);
-      } catch { setLogs([]); }
-    }
+    try {
+      // Employees get their own notifications; admins get the full feed.
+      const r = isAdmin
+        ? await api.get('/email-logs', { params: { limit: 10 } })
+        : await api.get('/email-logs/mine');
+      setLogs(r.data || []);
+    } catch { setLogs([]); }
   };
+
+  // Where a notification routes when clicked, based on its type.
+  const targetFor = (type: string) => {
+    if (type === 'Reminder') return '/tasks';
+    if (type.includes('Summary')) return isAdmin ? '/reports' : '/my-activity';
+    return isAdmin ? '/admin/email-logs' : '/my-activity';
+  };
+  const openNotif = (l: EmailLog) => { setOpen(false); nav(targetFor(l.email_type)); };
 
   useEffect(() => {
     load();
@@ -135,7 +137,8 @@ export default function Notifications() {
               ) : (
                 logs.map((l) => (
                   <div key={l.id}
-                    className="px-4 py-3 border-b border-slate-100 dark:border-white/10 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.04]">
+                    onClick={() => openNotif(l)}
+                    className="px-4 py-3 border-b border-slate-100 dark:border-white/10 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.04] cursor-pointer">
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5">{statusIcon(l.status)}</span>
                       <div className="flex-1 min-w-0">

@@ -102,10 +102,43 @@ export default function Sidebar() {
 
         <AnimatePresence>
           {!collapsed && isAdmin && <CheckEmployeeDayCard />}
+          {!collapsed && !isAdmin && <MyActivityCard />}
         </AnimatePresence>
       </nav>
 
     </motion.aside>
+  );
+}
+
+function MyActivityCard() {
+  const nav = useNavigate();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+      className="mt-auto pt-6"
+    >
+      <button
+        onClick={() => nav('/my-activity')}
+        className="w-full text-left relative rounded-2xl p-4 overflow-hidden bg-gradient-to-br from-brand-600 to-cyan-500 text-white shadow-[0_8px_24px_-8px_rgba(124,58,237,0.5)] hover:shadow-[0_12px_32px_-8px_rgba(124,58,237,0.6)] transition-all hover:-translate-y-0.5 group"
+      >
+        <div className="absolute -right-6 -top-6 h-20 w-20 rounded-full bg-white/10 blur-xl pointer-events-none" />
+        <div className="absolute -left-4 -bottom-4 h-16 w-16 rounded-full bg-white/10 blur-lg pointer-events-none" />
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center">
+              <Timer size={16} />
+            </div>
+            <div className="text-[10px] uppercase tracking-[0.18em] font-bold opacity-90">My time</div>
+          </div>
+          <div className="mt-3 text-sm font-semibold leading-snug">
+            See your tracked hours, projects &amp; breaks.
+          </div>
+          <div className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-semibold bg-white/20 group-hover:bg-white/30 px-2.5 py-1.5 rounded-lg">
+            Open My Activity →
+          </div>
+        </div>
+      </button>
+    </motion.div>
   );
 }
 

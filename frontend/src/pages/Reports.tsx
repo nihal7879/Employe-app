@@ -9,9 +9,9 @@ import { api } from '../lib/api';
 import type { Activity, Client, DailyTask, Employee, Project } from '../types';
 import Select from '../components/Select';
 import DatePicker from '../components/ui/DatePicker';
-import SegmentedBar, { Segment } from '../components/SegmentedBar';
+import MyTimeTracker from '../components/MyTimeTracker';
+import Modal from '../components/Modal';
 
-const CHART_COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16'];
 const TOOLTIP_STYLE = {
   borderRadius: 12,
   border: '1px solid rgba(15,23,42,0.10)',
@@ -28,7 +28,7 @@ const monthStartStr = () => {
 
 type Tab = 'daily' | 'weekly' | 'monthly' | 'drilldown' | 'day-view';
 type DailyType = 'employee' | 'client' | 'project' | 'activity' | 'pending';
-type RangeType = 'all' | 'employee' | 'client' | 'project' | 'activity';
+type RangeType = 'all' | 'employee' | 'client' | 'project' | 'activity' | 'assigned';
 const DAILY_TYPES: DailyType[] = ['employee', 'client', 'project', 'activity', 'pending'];
 
 export default function Reports() {
@@ -50,12 +50,10 @@ export default function Reports() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [filters, setFilters] = useState({ employee_id: '', client_id: '', project_id: '', activity_id: '' });
   const [tasks, setTasks] = useState<DailyTask[]>([]);
+  const [viewTask, setViewTask] = useState<DailyTask | null>(null);
 
-  // Day view state — supports a date range
+  // Day view state
   const [dayEmployee, setDayEmployee] = useState('');
-  const [dayFrom, setDayFrom] = useState(todayStr());
-  const [dayTo, setDayTo] = useState(todayStr());
-  const [dayTasks, setDayTasks] = useState<DailyTask[]>([]);
 
   useEffect(() => {
     if (tab !== 'drilldown' && tab !== 'day-view') return;
@@ -67,13 +65,6 @@ export default function Reports() {
     }).catch(() => {});
     // eslint-disable-next-line
   }, [tab]);
-
-  useEffect(() => {
-    if (tab !== 'day-view' || !dayEmployee || !dayFrom || !dayTo) return;
-    api.get('/daily-tasks', { params: { employee_id: dayEmployee, from: dayFrom, to: dayTo } })
-      .then((r) => setDayTasks(r.data || []))
-      .catch(() => setDayTasks([]));
-  }, [tab, dayEmployee, dayFrom, dayTo]);
 
   const filteredProjects = useMemo(
     () => (filters.client_id ? projects.filter((p) => p.client_id === Number(filters.client_id)) : projects),
@@ -172,13 +163,17 @@ export default function Reports() {
                     { label: 'Clients Only', value: 'client' },
                     { label: 'Projects Only', value: 'project' },
                     { label: 'Activities Only', value: 'activity' },
+                    { label: 'Assigned By Only', value: 'assigned' },
                   ]}
                 />
               </div>
               <button
                 onClick={() => {
-                  const key = rangeType === 'all' ? 'employees' : `${rangeType}s` as keyof any;
-                  const rows = (data as any)?.[key] || [];
+                  const keyMap: Record<RangeType, string> = {
+                    all: 'employees', employee: 'employees', client: 'clients',
+                    project: 'projects', activity: 'activities', assigned: 'assigned',
+                  };
+                  const rows = (data as any)?.[keyMap[rangeType]] || [];
                   downloadCsv(`${tab}-${rangeType}-${from}_to_${to}.csv`, rows);
                 }}
                 className="btn-secondary ml-auto"
@@ -284,6 +279,7 @@ export default function Reports() {
                     <th className="table-th">Project</th>
                     <th className="table-th">Activity</th>
                     <th className="table-th">Task</th>
+                    <th className="table-th">Assigned By</th>
                     <th className="table-th text-right">Hours</th>
                     <th className="table-th">Time</th>
                     <th className="table-th">IP</th>
@@ -291,7 +287,12 @@ export default function Reports() {
                 </thead>
                 <tbody>
                   {tasks.map((t) => (
-                    <tr key={t.id}>
+                    <tr
+                      key={t.id}
+                      onClick={() => setViewTask(t)}
+                      className="cursor-pointer hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+                      title="Click to view full task details"
+                    >
                       <td className="table-td tabular-nums whitespace-nowrap">{t.task_date}</td>
                       <td className="table-td">
                         <div className="font-medium text-slate-900">{t.employee_name}</div>
@@ -304,18 +305,28 @@ export default function Reports() {
                         <div className="font-medium text-slate-900 truncate" title={t.task_title}>{t.task_title}</div>
                         {t.description && <div className="text-xs text-slate-500 line-clamp-2" title={t.description}>{t.description}</div>}
                       </td>
+                      <td className="table-td">
+                        {t.assigned_by ? (
+                          <div className="font-medium text-slate-900">{t.assigned_by}</div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                        {t.reference && <div className="text-xs text-slate-500">Ref: {t.reference}</div>}
+                      </td>
                       <td className="table-td text-right tabular-nums font-semibold">{Number(t.hours_spent).toFixed(2)}</td>
                       <td className="table-td whitespace-nowrap text-xs">{t.start_time || '—'} → {t.end_time || '—'}</td>
                       <td className="table-td text-xs text-slate-500">{t.ip_address || '—'}</td>
                     </tr>
                   ))}
                   {tasks.length === 0 && (
-                    <tr><td colSpan={9} className="table-td text-center text-slate-400 py-10">No tasks match these filters.</td></tr>
+                    <tr><td colSpan={10} className="table-td text-center text-slate-400 py-10">No tasks match these filters.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
+
+          <TaskDetailModal task={viewTask} onClose={() => setViewTask(null)} />
         </>
       )}
 
@@ -325,9 +336,6 @@ export default function Reports() {
           employees={employees}
           employeeId={dayEmployee}
           setEmployeeId={setDayEmployee}
-          from={dayFrom} setFrom={setDayFrom}
-          to={dayTo} setTo={setDayTo}
-          tasks={dayTasks}
         />
       )}
     </div>
@@ -335,150 +343,37 @@ export default function Reports() {
 }
 
 function EmployeeDayView({
-  employees, employeeId, setEmployeeId, from, setFrom, to, setTo, tasks,
+  employees, employeeId, setEmployeeId,
 }: {
   employees: Employee[];
   employeeId: string;
   setEmployeeId: (s: string) => void;
-  from: string; setFrom: (s: string) => void;
-  to: string; setTo: (s: string) => void;
-  tasks: DailyTask[];
 }) {
-  const employee = employees.find((e) => String(e.id) === employeeId);
-
-  // All activities seen across the range — one color each
-  const activitySet = useMemo(
-    () => Array.from(new Set(tasks.map((t) => t.activity_name || 'Other'))).sort(),
-    [tasks],
-  );
-  const colorByActivity = useMemo(() => {
-    const m: Record<string, string> = {};
-    activitySet.forEach((a, i) => { m[a] = CHART_COLORS[i % CHART_COLORS.length]; });
-    return m;
-  }, [activitySet]);
-
-  // Group tasks by date
-  const days = useMemo(() => {
-    const m: Record<string, { date: string; tasks: DailyTask[]; total: number; perActivity: Record<string, number> }> = {};
-    for (const t of tasks) {
-      const d = t.task_date;
-      if (!m[d]) m[d] = { date: d, tasks: [], total: 0, perActivity: {} };
-      m[d].tasks.push(t);
-      m[d].total += Number(t.hours_spent || 0);
-      const a = t.activity_name || 'Other';
-      m[d].perActivity[a] = (m[d].perActivity[a] || 0) + Number(t.hours_spent || 0);
-    }
-    return Object.values(m).sort((a, b) => a.date.localeCompare(b.date));
-  }, [tasks]);
-
-  const maxDayHours = Math.max(...days.map((d) => d.total), 8); // for scaling bar widths
-
   return (
-    <>
-      {/* Filters */}
+    <div className="space-y-4">
       <div className="card p-5">
         <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          <FilterIcon size={16} className="text-brand-600" /> Pick employee and date range
+          <FilterIcon size={16} className="text-brand-600" /> Pick an employee
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="label">Employee</label>
-            <Select
-              value={employeeId}
-              options={employees.map((e) => ({ label: e.name, value: String(e.id) }))}
-              onChange={setEmployeeId}
-              placeholder="Select employee"
-            />
-          </div>
-          <div>
-            <label className="label">From</label>
-            <DatePicker value={from} onChange={setFrom} clearable={false} />
-          </div>
-          <div>
-            <label className="label">To</label>
-            <DatePicker value={to} onChange={setTo} clearable={false} />
-          </div>
+        <div className="max-w-sm">
+          <label className="label">Employee</label>
+          <Select
+            value={employeeId}
+            options={employees.map((e) => ({ label: e.name, value: String(e.id) }))}
+            onChange={setEmployeeId}
+            placeholder="Select employee"
+          />
         </div>
       </div>
 
-      {/* Activity composition by day — matches the reference layout */}
-      {days.length === 0 ? (
-        <div className="card p-12 text-center">
-          <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-100 dark:bg-white/[0.06] items-center justify-center mb-3">
-            <FilterIcon size={22} className="text-slate-400" />
-          </div>
-          <div className="text-slate-500 dark:text-slate-400 text-sm">
-            {employee ? <>No tasks logged by <strong>{employee.name}</strong> in this range.</> : 'Pick an employee to see their breakdown.'}
-          </div>
-        </div>
+      {employeeId ? (
+        <MyTimeTracker employeeId={employeeId} />
       ) : (
-        <div className="card p-5 md:p-6">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5">
-            <div>
-              <h3 className="font-semibold text-lg">Activity composition by day</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {employee?.name} · {days.length} day{days.length === 1 ? '' : 's'} · hours split by activity
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {activitySet.map((a) => (
-                <span
-                  key={a}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200"
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ background: colorByActivity[a] }} />
-                  {a}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06]">
-            <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4 px-1">
-              <span>Day · activity breakdown</span>
-              <span>Hours</span>
-            </div>
-
-            <div className="space-y-6">
-              {days.map((d) => {
-                const segs: Segment[] = Object.entries(d.perActivity).map(([label, value]) => ({
-                  label, value: Number(value), color: colorByActivity[label],
-                }));
-                const widthPct = (d.total / maxDayHours) * 100;
-                return (
-                  <div key={d.date}>
-                    <div className="flex items-baseline justify-between mb-2 gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-900 dark:text-white">
-                          {new Date(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">{d.date}</div>
-                      </div>
-                      <div className="text-sm tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
-                        <span className="font-bold text-slate-900 dark:text-white">{d.total.toFixed(2)}h</span>
-                        <span className="text-slate-400 dark:text-slate-500"> · {d.tasks.length} task{d.tasks.length === 1 ? '' : 's'}</span>
-                      </div>
-                    </div>
-                    <div style={{ width: `${widthPct}%` }} className="min-w-[20%]">
-                      <SegmentedBar segments={segs} height={14} />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
-                      {segs.map((s) => (
-                        <span key={s.label} className="inline-flex items-center gap-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
-                          <span className="font-semibold tabular-nums">{s.value.toFixed(1)}h</span>
-                          <span className="text-slate-500 dark:text-slate-400">{s.label}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div className="card p-12 text-center text-sm text-slate-500 dark:text-slate-400">
+          Pick an employee to see their activity.
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -499,6 +394,49 @@ function SummaryTile({ icon, label, value, accent = 'brand' }: { icon?: React.Re
         <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-medium">{label}</div>
         <div className="mt-0.5 text-2xl font-bold tabular-nums">{value}</div>
       </div>
+    </div>
+  );
+}
+
+function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: () => void }) {
+  return (
+    <Modal open={!!task} title="Task details" onClose={onClose} size="lg">
+      {task && (
+        <div className="space-y-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Task</div>
+            <div className="font-semibold text-slate-900 dark:text-white whitespace-pre-wrap break-words">{task.task_title}</div>
+          </div>
+          {task.description && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Description</div>
+              <div className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{task.description}</div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 pt-3 border-t border-slate-100 dark:border-white/10">
+            <Field label="Date" value={task.task_date} />
+            <Field label="Employee" value={task.employee_name} />
+            <Field label="Client" value={task.client_name} />
+            <Field label="Project" value={task.project_name} />
+            <Field label="Activity" value={task.activity_name} />
+            <Field label="Assigned By" value={task.assigned_by} />
+            <Field label="Reference" value={task.reference} />
+            <Field label="Hours" value={Number(task.hours_spent).toFixed(2)} />
+            <Field label="Time" value={`${task.start_time || '—'} → ${task.end_time || '—'}`} />
+            <Field label="Status" value={task.submission_status} />
+            <Field label="IP Address" value={task.ip_address} />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function Field({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-sm text-slate-900 dark:text-white break-words">{value === 0 || value ? value : '—'}</div>
     </div>
   );
 }
@@ -640,21 +578,34 @@ function DailyTable({ type, data }: { type: DailyType; data: any }) {
     pending:  { header: ['Code', 'Name', 'Email', 'Department'],
                 row: (r) => [r.employee_code, r.name, r.email, r.department_name] },
   };
+  const numeric = (h: string) => ['Tasks', 'Total Hours', 'Hours'].includes(h);
+  const headers = cols[type].header;
   return (
     <table className="w-full">
-      <thead><tr>{cols[type].header.map((h) => <th key={h} className="table-th">{h}</th>)}</tr></thead>
+      <thead>
+        <tr>{headers.map((h) => <th key={h} className={`table-th ${numeric(h) ? 'text-right' : ''}`}>{h}</th>)}</tr>
+      </thead>
       <tbody>
         {data.map((r: any, i: number) => (
-          <tr key={i}>{cols[type].row(r).map((v, j) => <td key={j} className="table-td">{v}</td>)}</tr>
+          <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+            {cols[type].row(r).map((v, j) => (
+              <td
+                key={j}
+                className={`table-td ${numeric(headers[j]) ? 'text-right tabular-nums' : ''} ${j === 0 ? 'font-medium text-slate-900 dark:text-white' : ''}`}
+              >
+                {v}
+              </td>
+            ))}
+          </tr>
         ))}
       </tbody>
     </table>
   );
 }
 
-function RangeTables({ data, only = 'all' }: { data: any; only?: 'all' | 'employee' | 'client' | 'project' | 'activity' }) {
+function RangeTables({ data, only = 'all' }: { data: any; only?: RangeType }) {
   if (!data) return <p className="text-slate-400 text-sm">Loading…</p>;
-  const show = (k: 'employee' | 'client' | 'project' | 'activity') => only === 'all' || only === k;
+  const show = (k: Exclude<RangeType, 'all'>) => only === 'all' || only === k;
   return (
     <div className="space-y-6">
       {show('employee') && (
@@ -669,24 +620,46 @@ function RangeTables({ data, only = 'all' }: { data: any; only?: 'all' | 'employ
       {show('activity') && (
         <Section title="Activities" rows={data.activities} cols={['activity_name', 'task_count', 'total_hours']}  headers={['Activity', 'Tasks', 'Hours']} />
       )}
+      {show('assigned') && (
+        <Section title="Assigned By" rows={data.assigned} cols={['assigned_by', 'task_count', 'total_hours']} headers={['Assigned By', 'Tasks', 'Hours']} emptyLabel="Unassigned" />
+      )}
     </div>
   );
 }
 
-function Section({ title, rows, cols, headers }: { title: string; rows: any[]; cols: string[]; headers: string[] }) {
+function Section({ title, rows, cols, headers, emptyLabel = '—' }: { title: string; rows: any[]; cols: string[]; headers: string[]; emptyLabel?: string }) {
+  const list = rows || [];
+  const totalTasks = list.reduce((s, r) => s + Number(r.task_count || 0), 0);
+  const totalHours = list.reduce((s, r) => s + Number(r.total_hours || 0), 0);
   return (
-    <div>
-      <h3 className="font-semibold mb-2">{title}</h3>
-      <table className="w-full">
-        <thead><tr>{headers.map((h) => <th key={h} className="table-th">{h}</th>)}</tr></thead>
+    <div className="rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/70 dark:bg-white/[0.03] border-b border-slate-100 dark:border-white/10">
+        <h3 className="font-semibold text-sm text-slate-900 dark:text-white">{title}</h3>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-slate-500 dark:text-slate-400 tabular-nums">{totalTasks} tasks</span>
+          <span className="font-semibold text-brand-600 dark:text-brand-400 tabular-nums">{totalHours.toFixed(2)} h</span>
+        </div>
+      </div>
+      <table className="w-full table-fixed">
+        <thead>
+          <tr>{headers.map((h, i) => <th key={h} className={`table-th ${i > 0 ? 'text-right w-32' : ''}`}>{h}</th>)}</tr>
+        </thead>
         <tbody>
-          {(rows || []).map((r: any, i: number) => (
-            <tr key={i}>
-              {cols.map((c) => <td key={c} className="table-td">{c === 'total_hours' ? Number(r[c]).toFixed(2) : r[c]}</td>)}
+          {list.map((r: any, i: number) => (
+            <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+              {cols.map((c, j) => (
+                <td
+                  key={c}
+                  className={`table-td ${j === 0 ? 'font-medium text-slate-900 dark:text-white truncate' : 'text-right tabular-nums'}`}
+                  title={j === 0 ? String((r[c] ?? '') === '' ? emptyLabel : r[c]) : undefined}
+                >
+                  {c === 'total_hours' ? Number(r[c]).toFixed(2) : (r[c] ?? '') === '' ? emptyLabel : r[c]}
+                </td>
+              ))}
             </tr>
           ))}
-          {(!rows || rows.length === 0) && (
-            <tr><td colSpan={cols.length} className="table-td text-center text-slate-400">No data.</td></tr>
+          {list.length === 0 && (
+            <tr><td colSpan={cols.length} className="table-td text-center text-slate-400 py-6">No data.</td></tr>
           )}
         </tbody>
       </table>

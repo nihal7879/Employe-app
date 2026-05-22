@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, Clock, Briefcase, ListChecks, Search } from 'lucide-react';
+import { Plus, Clock } from 'lucide-react';
 import { api } from '../lib/api';
-import type { Activity, Client, DailyTask, Project } from '../types';
+import type { Activity, Client, Project } from '../types';
 import Select from '../components/Select';
 import DatePicker from '../components/ui/DatePicker';
 import TimePicker from '../components/ui/TimePicker';
-import ConfirmDialog from '../components/ConfirmDialog';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -15,10 +14,6 @@ export default function Tasks() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [tasks, setTasks] = useState<DailyTask[]>([]);
-  const [filterDate, setFilterDate] = useState(todayStr());
-  const [search, setSearch] = useState('');
-  const [confirmId, setConfirmId] = useState<number | null>(null);
 
   const [form, setForm] = useState({
     client_id: '', project_id: '', activity_id: '',
@@ -37,15 +32,14 @@ export default function Tasks() {
   const activityOptions = activities.map((a) => ({ label: a.activity_name, value: String(a.id) }));
 
   const load = async () => {
-    const [c, p, a, t] = await Promise.all([
+    const [c, p, a] = await Promise.all([
       api.get('/clients'),
       api.get('/projects'),
       api.get('/activities'),
-      api.get('/daily-tasks', { params: { from: filterDate, to: filterDate } }),
     ]);
-    setClients(c.data); setProjects(p.data); setActivities(a.data); setTasks(t.data);
+    setClients(c.data); setProjects(p.data); setActivities(a.data);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [filterDate]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   // Auto-calculate hours from start/end time
   useEffect(() => {
@@ -87,43 +81,17 @@ export default function Tasks() {
       });
       toast.success('Task logged');
       setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '' });
-      load();
     } catch (e: any) {
       toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
     }
   };
 
-  const remove = async () => {
-    if (confirmId == null) return;
-    try {
-      await api.delete(`/daily-tasks/${confirmId}`);
-      toast.success('Deleted'); load();
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Failed to delete');
-    }
-  };
-
-  const visible = tasks.filter((t) =>
-    !search ||
-    [t.task_title, t.project_name, t.client_name, t.activity_name].some((s) =>
-      (s || '').toLowerCase().includes(search.toLowerCase()),
-    ),
-  );
-  const total = visible.reduce((s, t) => s + Number(t.hours_spent), 0);
-
   return (
     <div className="space-y-6">
-      {/* Header strip */}
-      <div className="flex flex-col md:flex-row md:items-end gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">My Tasks</h1>
-          <p className="text-ink-mute text-sm">Log your day, build your streak.</p>
-        </div>
-        <div className="md:ml-auto flex items-center gap-2 flex-wrap">
-          <span className="pill-brand"><Clock size={12} /> {filterDate}</span>
-          <span className="pill-cyan"><ListChecks size={12} /> {visible.length} tasks</span>
-          <span className="pill-ok"><Briefcase size={12} /> {total.toFixed(2)} h</span>
-        </div>
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold">My Tasks</h1>
+        <p className="text-ink-mute text-sm">Log your day, build your streak.</p>
       </div>
 
       {/* Entry form */}
@@ -204,70 +172,6 @@ export default function Tasks() {
           </div>
         </form>
       </motion.div>
-
-      {/* Table */}
-      <div className="card p-5">
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <DatePicker value={filterDate} onChange={setFilterDate} clearable={false} className="w-44" />
-          <div className="relative ml-auto w-72">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input placeholder="Search task, project, client…" className="!pl-9 w-full"
-              value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="table-th">Client</th>
-                <th className="table-th">Project</th>
-                <th className="table-th">Activity</th>
-                <th className="table-th">Task</th>
-                <th className="table-th text-right">Hours</th>
-                <th className="table-th"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <AnimatePresence initial={false}>
-                {visible.map((t) => (
-                  <motion.tr
-                    key={t.id}
-                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <td className="table-td">{t.client_name}</td>
-                    <td className="table-td font-medium text-slate-900 dark:text-white">{t.project_name}</td>
-                    <td className="table-td"><span className="pill-brand">{t.activity_name}</span></td>
-                    <td className="table-td">
-                      <div className="font-medium text-slate-900 dark:text-white">{t.task_title}</div>
-                      {t.description && <div className="text-xs text-ink-mute line-clamp-1">{t.description}</div>}
-                    </td>
-                    <td className="table-td text-right tabular-nums font-semibold text-slate-900 dark:text-white">{Number(t.hours_spent).toFixed(2)}</td>
-                    <td className="table-td text-right">
-                      <button onClick={() => setConfirmId(t.id)} className="text-ink-mute hover:text-bad transition-colors">
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </motion.tr>
-                ))}
-              </AnimatePresence>
-              {visible.length === 0 && (
-                <tr><td colSpan={6} className="table-td text-center text-ink-mute py-10">No tasks for this date.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <ConfirmDialog
-        open={confirmId !== null}
-        title="Delete this task?"
-        message="This task will be removed from your daily log. This action cannot be undone."
-        confirmLabel="Delete"
-        danger
-        onConfirm={remove}
-        onClose={() => setConfirmId(null)}
-      />
     </div>
   );
 }

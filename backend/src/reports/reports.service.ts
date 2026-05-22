@@ -64,6 +64,7 @@ export class ReportsService {
       .leftJoin('departments', 'employees.department_id', 'departments.id')
       .where('employees.is_active', true)
       .andWhere('employees.is_deleted', false)
+      .andWhere('employees.role_id', 2) // employees only — admins don't log tasks
       .whereNotIn('employees.id', submittedEmpIds.length ? submittedEmpIds : [0])
       .select(
         'employees.id',
@@ -146,18 +147,33 @@ export class ReportsService {
       );
   }
 
+  private groupedByAssignedBy({ from, to }: Range) {
+    return this.db('daily_tasks')
+      .where('daily_tasks.is_deleted', false)
+      .andWhereBetween('daily_tasks.task_date', [from, to])
+      .groupBy('daily_tasks.assigned_by')
+      .select(
+        'daily_tasks.assigned_by',
+        this.db.raw('SUM(hours_spent) as total_hours'),
+        this.db.raw('COUNT(*) as task_count'),
+      )
+      .orderBy('total_hours', 'desc');
+  }
+
   weekly(range: Range) {
     return Promise.all([
       this.groupedByEmployee(range),
       this.groupedByClient(range),
       this.groupedByProject(range),
       this.groupedByActivity(range),
-    ]).then(([employees, clients, projects, activities]) => ({
+      this.groupedByAssignedBy(range),
+    ]).then(([employees, clients, projects, activities, assigned]) => ({
       range,
       employees,
       clients,
       projects,
       activities,
+      assigned,
     }));
   }
 

@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Clock, Coffee } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { Clock, Coffee, Trash2, Plus, Eye } from 'lucide-react';
 import { api } from '../lib/api';
 import type { DailyTask } from '../types';
 import DatePicker from './ui/DatePicker';
+import ConfirmDialog from './ConfirmDialog';
+import Modal from './Modal';
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16', '#F97316', '#14B8A6'];
 
@@ -73,26 +77,41 @@ function groupHours(tasks: DailyTask[], field: keyof DailyTask, fallback: string
   return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
 }
 
-export default function MyTimeTracker() {
+export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
   const [view, setView] = useState<View>('day');
   const [date, setDate] = useState(todayStr());
   const [customFrom, setCustomFrom] = useState(monthStartStr());
   const [customTo, setCustomTo] = useState(todayStr());
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(false);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [viewTask, setViewTask] = useState<DailyTask | null>(null);
+  const navigate = useNavigate();
 
   const range = useMemo(
     () => (view === 'range' ? { from: customFrom, to: customTo } : rangeFor(view, date)),
     [view, date, customFrom, customTo],
   );
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
-    api.get('/daily-tasks', { params: { from: range.from, to: range.to } })
+    api.get('/daily-tasks', { params: { from: range.from, to: range.to, employee_id: employeeId || undefined } })
       .then((r) => setTasks(r.data || []))
       .catch(() => setTasks([]))
       .finally(() => setLoading(false));
-  }, [range.from, range.to]);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [range.from, range.to, employeeId]);
+
+  const removeTask = async () => {
+    if (confirmId == null) return;
+    try {
+      await api.delete(`/daily-tasks/${confirmId}`);
+      toast.success('Task deleted');
+      load();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to delete');
+    }
+  };
 
   // Consistent color per project across the range
   const projectColors = useMemo(() => {
@@ -154,6 +173,11 @@ export default function MyTimeTracker() {
               <DatePicker value={date} onChange={setDate} clearable={false} />
             </div>
           )}
+          {!employeeId && (
+            <button onClick={() => navigate('/tasks')} className="btn-primary shrink-0">
+              <Plus size={15} /> Add task
+            </button>
+          )}
         </div>
       </div>
 
@@ -165,26 +189,78 @@ export default function MyTimeTracker() {
             <Clock size={24} className="text-slate-400" />
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No tasks logged in this {view === 'range' ? 'range' : view}.</p>
-          <a href="/tasks" className="btn-primary inline-flex">Log a task</a>
+          {!employeeId && <a href="/tasks" className="btn-primary inline-flex">Log a task</a>}
         </div>
       ) : (
         <div className="space-y-6">
           {view === 'day'
-            ? <DayTimeline tasks={tasks} projectColors={projectColors} />
-            : <DaySections tasks={tasks} projectColors={projectColors} />}
+            ? <DayTimeline tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} />
+            : <DaySections tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} />}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
             <BreakdownList title="Hours by client" rows={byClient} />
             <BreakdownList title="Hours by activity" rows={byActivity} />
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title="Delete this task?"
+        message="This task will be removed from your log. This action cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={removeTask}
+        onClose={() => setConfirmId(null)}
+      />
+
+      <TaskDetailModal task={viewTask} onClose={() => setViewTask(null)} />
     </motion.div>
+  );
+}
+
+function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: () => void }) {
+  return (
+    <Modal open={!!task} title="Task details" onClose={onClose} size="lg">
+      {task && (
+        <div className="space-y-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Task</div>
+            <div className="font-semibold text-slate-900 dark:text-white whitespace-pre-wrap break-words">{task.task_title || '—'}</div>
+          </div>
+          {task.description && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Description</div>
+              <div className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">{task.description}</div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 pt-3 border-t border-slate-100 dark:border-white/10">
+            <DetailField label="Date" value={task.task_date} />
+            <DetailField label="Client" value={task.client_name} />
+            <DetailField label="Project" value={task.project_name} />
+            <DetailField label="Activity" value={task.activity_name} />
+            <DetailField label="Assigned By" value={task.assigned_by} />
+            <DetailField label="Reference" value={task.reference} />
+            <DetailField label="Hours" value={Number(task.hours_spent).toFixed(2)} />
+            <DetailField label="Time" value={`${task.start_time || '—'} → ${task.end_time || '—'}`} />
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function DetailField({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-sm text-slate-900 dark:text-white break-words">{value === 0 || value ? value : '—'}</div>
+    </div>
   );
 }
 
 /* ---------------- Day timeline ---------------- */
 
-function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColors: Record<string, string> }) {
+function DayTimeline({ tasks, projectColors, onDelete, onView }: { tasks: DailyTask[]; projectColors: Record<string, string>; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void }) {
   const timed = useMemo(() => (
     tasks
       .map((t) => ({ t, start: toMin(t.start_time), end: toMin(t.end_time) }))
@@ -194,7 +270,7 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
   ), [tasks]);
 
   if (timed.length === 0) {
-    return <DayTable tasks={tasks} projectColors={projectColors} note="No start/end times set on these tasks." />;
+    return <DayTable tasks={tasks} projectColors={projectColors} onDelete={onDelete} onView={onView} note="No start/end times set on these tasks." />;
   }
 
   const minStart = Math.min(...timed.map((x) => x.start));
@@ -270,7 +346,7 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
         </div>
       </div>
 
-      <DayTable tasks={tasks} projectColors={projectColors} />
+      <DayTable tasks={tasks} projectColors={projectColors} onDelete={onDelete} onView={onView} />
     </div>
   );
 }
@@ -288,8 +364,8 @@ type Row =
   | { kind: 'task'; t: DailyTask; s: number | null; e: number | null }
   | { kind: 'break'; s: number; e: number };
 
-function DayTable({ tasks, projectColors, note }: {
-  tasks: DailyTask[]; projectColors: Record<string, string>; note?: string;
+function DayTable({ tasks, projectColors, note, onDelete, onView }: {
+  tasks: DailyTask[]; projectColors: Record<string, string>; note?: string; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void;
 }) {
   const timed = tasks
     .map((t) => ({ s: toMin(t.start_time), e: toMin(t.end_time) }))
@@ -319,6 +395,7 @@ function DayTable({ tasks, projectColors, note }: {
             <th className="table-th">Activity</th>
             <th className="table-th text-right">Duration</th>
             <th className="table-th">Time</th>
+            <th className="table-th"></th>
           </tr>
         </thead>
         <tbody>
@@ -342,6 +419,7 @@ function DayTable({ tasks, projectColors, note }: {
                   <td className="table-td whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                     {fmtTime(row.s)} – {fmtTime(row.e)}
                   </td>
+                  <td className="table-td"></td>
                 </tr>
               );
             }
@@ -362,6 +440,13 @@ function DayTable({ tasks, projectColors, note }: {
                       <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         {t.client_name || '—'}{t.task_title ? ` · ${t.task_title}` : ''}
                       </div>
+                      {(t.assigned_by || t.reference) && (
+                        <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                          {t.assigned_by ? `Assigned by ${t.assigned_by}` : ''}
+                          {t.assigned_by && t.reference ? ' · ' : ''}
+                          {t.reference ? `Ref: ${t.reference}` : ''}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -371,6 +456,20 @@ function DayTable({ tasks, projectColors, note }: {
                 <td className="table-td text-right tabular-nums font-semibold text-cyan-600 dark:text-cyan-400">{dur}</td>
                 <td className="table-td whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                   {s != null && e != null ? `${fmtTime(s)} – ${fmtTime(e)}` : '—'}
+                </td>
+                <td className="table-td text-right">
+                  <div className="flex items-center justify-end gap-1.5">
+                    {onView && (
+                      <button onClick={() => onView(t)} className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors" title="View task details">
+                        <Eye size={16} />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button onClick={() => onDelete(t.id)} className="text-slate-400 hover:text-rose-500 transition-colors" title="Delete task">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             );
@@ -383,7 +482,7 @@ function DayTable({ tasks, projectColors, note }: {
 
 /* ---------------- Week / Month / Custom — per-day timesheet sections (scrollable) ---------------- */
 
-function DaySections({ tasks, projectColors }: { tasks: DailyTask[]; projectColors: Record<string, string> }) {
+function DaySections({ tasks, projectColors, onDelete, onView }: { tasks: DailyTask[]; projectColors: Record<string, string>; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void }) {
   const days = useMemo(() => {
     const m: Record<string, DailyTask[]> = {};
     for (const t of tasks) {
@@ -409,7 +508,7 @@ function DaySections({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
             </h3>
             <span className="text-sm tabular-nums font-semibold text-brand-600 dark:text-brand-400">{fmtHMS(total)} hrs</span>
           </div>
-          <DayTimeline tasks={dayTasks} projectColors={projectColors} />
+          <DayTimeline tasks={dayTasks} projectColors={projectColors} onDelete={onDelete} onView={onView} />
         </div>
       ))}
     </div>
