@@ -152,7 +152,6 @@ export default function Dashboard() {
                   <AnimatedNumber value={hoursToday} format={(n) => n.toFixed(2)} />
                   <span className="text-base text-slate-500 font-normal"> h</span>
                 </div>
-                <div className="text-xs text-slate-500">{productivityPct}% of 8h goal</div>
               </div>
             </div>
           )}
@@ -634,17 +633,18 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* My today — employees only */}
+      {/* My today — employees only (full breakdown lives on the My Activity page) */}
       {!isAdmin && myToday && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
           <div className="flex items-center gap-3 mb-4">
             <Clock className="text-brand-600" size={20} />
             <h2 className="font-semibold">My tasks · today</h2>
-            <span className="ml-auto text-xs text-slate-500">{myToday.tasks.length} submitted</span>
+            <span className="ml-auto text-xs text-slate-500">{myToday.tasks.length} logged</span>
+            <a href="/my-activity" className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700">View my activity →</a>
           </div>
           {myToday.tasks.length === 0 ? (
             <div className="text-center py-12">
-              <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-50 items-center justify-center mb-3">
+              <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-50 dark:bg-white/[0.06] items-center justify-center mb-3">
                 <CheckCircle2 size={24} className="text-slate-400" />
               </div>
               <p className="text-sm text-slate-500 mb-3">No tasks submitted yet today.</p>
@@ -664,7 +664,7 @@ export default function Dashboard() {
                 <tbody>
                   {myToday.tasks.map((t) => (
                     <tr key={t.id}>
-                      <td className="table-td font-medium text-slate-900">{t.project_name}</td>
+                      <td className="table-td font-medium text-slate-900 dark:text-white">{t.project_name}</td>
                       <td className="table-td"><span className="pill-brand">{t.activity_name}</span></td>
                       <td className="table-td">{t.task_title}</td>
                       <td className="table-td text-right tabular-nums font-semibold">{Number(t.hours_spent).toFixed(2)}</td>

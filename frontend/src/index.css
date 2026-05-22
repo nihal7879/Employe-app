@@ -21,7 +21,7 @@ body {
 .app-sidebar      { background: #FFFFFF; }
 .dark .app-sidebar { background: #0F1428; }
 
-.app-main         { background: #F4F5F8; }
+.app-main         { background: #F4F5F8; scrollbar-gutter: stable; }
 .dark .app-main   { background: #0B1020; }
 
 /* scrollbar */

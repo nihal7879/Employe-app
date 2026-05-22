@@ -2,8 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, X } from 'lucide-react';
 
-const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')); // 01..12
 const MINUTES = ['00', '15', '30', '45'];
+const PERIODS: ('AM' | 'PM')[] = ['AM', 'PM'];
+
+// Stored value stays 24-hour "HH:MM"; the UI shows 12-hour with AM/PM.
+function parse(value?: string) {
+  if (!value || !value.includes(':')) return { h12: '', minute: '', period: 'AM' as 'AM' | 'PM' };
+  const [hStr, mStr] = value.split(':');
+  const h = Number(hStr);
+  const period: 'AM' | 'PM' = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12; if (h12 === 0) h12 = 12;
+  return { h12: String(h12).padStart(2, '0'), minute: mStr, period };
+}
+function to24(h12: number, period: 'AM' | 'PM') {
+  let h = h12 % 12;            // 12 -> 0
+  if (period === 'PM') h += 12; // 12 PM -> 12, 1 PM -> 13 …
+  return String(h).padStart(2, '0');
+}
 
 export default function TimePicker({
   value, onChange, placeholder = 'Pick a time', clearable = true, className = '',
@@ -16,7 +32,7 @@ export default function TimePicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const [h, m] = (value || ':').split(':');
+  const cur = parse(value);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -26,19 +42,28 @@ export default function TimePicker({
     return () => window.removeEventListener('mousedown', onClick);
   }, []);
 
+  const commit = (h12: number, minute: string, period: 'AM' | 'PM') => {
+    onChange(`${to24(h12, period)}:${minute}`);
+  };
+  const pickHour = (hh: string) => commit(Number(hh), cur.minute || '00', cur.period);
+  const pickMinute = (mm: string) => commit(cur.h12 ? Number(cur.h12) : 12, mm, cur.period);
+  const pickPeriod = (p: 'AM' | 'PM') => { commit(cur.h12 ? Number(cur.h12) : 12, cur.minute || '00', p); setOpen(false); };
+
+  const display = value && value.includes(':') ? `${cur.h12}:${cur.minute} ${cur.period}` : '';
+
   return (
     <div ref={ref} className={`relative ${className}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white border text-sm transition-all text-left
-          ${open ? 'border-brand-500 shadow-[0_0_0_3px_rgba(124,58,237,0.18)]' : 'border-slate-200 hover:border-slate-300'}`}
+        className={`w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.04] border text-sm transition-all text-left
+          ${open ? 'border-brand-500 shadow-[0_0_0_3px_rgba(124,58,237,0.18)]' : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'}`}
       >
         <Clock size={15} className="text-slate-400 shrink-0" />
-        <span className={`flex-1 truncate ${value ? 'text-slate-900' : 'text-slate-400'}`}>
-          {value || placeholder}
+        <span className={`flex-1 truncate ${display ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+          {display || placeholder}
         </span>
-        {clearable && value && (
+        {clearable && display && (
           <span role="button" onClick={(e) => { e.stopPropagation(); onChange(''); }} className="text-slate-400 hover:text-slate-700">
             <X size={14} />
           </span>
@@ -50,28 +75,39 @@ export default function TimePicker({
           <motion.div
             initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-0 mt-2 z-50 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 flex gap-1"
+            className="absolute left-0 mt-2 z-50 rounded-2xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl p-1.5 flex gap-0.5"
           >
-            <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100">
+            <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100 dark:border-white/10">
               {HOURS.map((hh) => (
                 <button
                   type="button"
                   key={hh}
-                  onClick={() => onChange(`${hh}:${m || '00'}`)}
-                  className={`block w-12 text-center text-sm py-1.5 rounded-md transition-colors
-                    ${h === hh ? 'bg-brand-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                  onClick={() => pickHour(hh)}
+                  className={`block w-10 text-center text-sm py-1.5 rounded-md transition-colors
+                    ${cur.h12 === hh ? 'bg-brand-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
                 >{hh}</button>
               ))}
             </div>
-            <div className="h-48 overflow-y-auto">
+            <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100 dark:border-white/10">
               {MINUTES.map((mm) => (
                 <button
                   type="button"
                   key={mm}
-                  onClick={() => { onChange(`${h || '00'}:${mm}`); setOpen(false); }}
-                  className={`block w-12 text-center text-sm py-1.5 rounded-md transition-colors
-                    ${m === mm ? 'bg-brand-600 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                  onClick={() => pickMinute(mm)}
+                  className={`block w-10 text-center text-sm py-1.5 rounded-md transition-colors
+                    ${cur.minute === mm ? 'bg-brand-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
                 >{mm}</button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-1">
+              {PERIODS.map((p) => (
+                <button
+                  type="button"
+                  key={p}
+                  onClick={() => pickPeriod(p)}
+                  className={`w-10 text-center text-sm py-1.5 rounded-md transition-colors
+                    ${cur.period === p && display ? 'bg-brand-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
+                >{p}</button>
               ))}
             </div>
           </motion.div>

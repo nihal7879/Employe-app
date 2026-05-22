@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import type { Activity, Client, DailyTask, Employee, Project } from '../types';
 import Select from '../components/Select';
 import DatePicker from '../components/ui/DatePicker';
+import SegmentedBar, { Segment } from '../components/SegmentedBar';
 
 const CHART_COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16'];
 const TOOLTIP_STYLE = {
@@ -25,7 +26,7 @@ const monthStartStr = () => {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 };
 
-type Tab = 'daily' | 'weekly' | 'monthly' | 'drilldown';
+type Tab = 'daily' | 'weekly' | 'monthly' | 'drilldown' | 'day-view';
 type DailyType = 'employee' | 'client' | 'project' | 'activity' | 'pending';
 type RangeType = 'all' | 'employee' | 'client' | 'project' | 'activity';
 const DAILY_TYPES: DailyType[] = ['employee', 'client', 'project', 'activity', 'pending'];
@@ -50,14 +51,29 @@ export default function Reports() {
   const [filters, setFilters] = useState({ employee_id: '', client_id: '', project_id: '', activity_id: '' });
   const [tasks, setTasks] = useState<DailyTask[]>([]);
 
+  // Day view state — supports a date range
+  const [dayEmployee, setDayEmployee] = useState('');
+  const [dayFrom, setDayFrom] = useState(todayStr());
+  const [dayTo, setDayTo] = useState(todayStr());
+  const [dayTasks, setDayTasks] = useState<DailyTask[]>([]);
+
   useEffect(() => {
-    if (tab !== 'drilldown') return;
+    if (tab !== 'drilldown' && tab !== 'day-view') return;
     Promise.all([
       api.get('/employees'), api.get('/clients'), api.get('/projects'), api.get('/activities'),
     ]).then(([e, c, p, a]) => {
       setEmployees(e.data); setClients(c.data); setProjects(p.data); setActivities(a.data);
+      if (tab === 'day-view' && !dayEmployee && e.data?.[0]) setDayEmployee(String(e.data[0].id));
     }).catch(() => {});
+    // eslint-disable-next-line
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'day-view' || !dayEmployee || !dayFrom || !dayTo) return;
+    api.get('/daily-tasks', { params: { employee_id: dayEmployee, from: dayFrom, to: dayTo } })
+      .then((r) => setDayTasks(r.data || []))
+      .catch(() => setDayTasks([]));
+  }, [tab, dayEmployee, dayFrom, dayTo]);
 
   const filteredProjects = useMemo(
     () => (filters.client_id ? projects.filter((p) => p.client_id === Number(filters.client_id)) : projects),
@@ -96,20 +112,20 @@ export default function Reports() {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
-        {(['daily', 'weekly', 'monthly', 'drilldown'] as Tab[]).map((t) => (
+      <div className="flex gap-1 border-b border-slate-200 dark:border-white/10 overflow-x-auto">
+        {(['daily', 'weekly', 'monthly', 'drilldown', 'day-view'] as Tab[]).map((t) => (
           <button key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
+              tab === t ? 'border-brand-600 text-brand-700 dark:text-brand-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'
             }`}>
-            {t === 'drilldown' ? 'Drilldown' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'drilldown' ? 'Drilldown' : t === 'day-view' ? 'Employee Day' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
 
       {/* ============= AGGREGATE TABS ============= */}
-      {tab !== 'drilldown' && (
+      {tab !== 'drilldown' && tab !== 'day-view' && (
         <div className="card p-5">
           {tab === 'daily' ? (
             <div className="flex flex-wrap gap-3 items-end mb-4">
@@ -302,7 +318,167 @@ export default function Reports() {
           </div>
         </>
       )}
+
+      {/* ============= EMPLOYEE DAY VIEW ============= */}
+      {tab === 'day-view' && (
+        <EmployeeDayView
+          employees={employees}
+          employeeId={dayEmployee}
+          setEmployeeId={setDayEmployee}
+          from={dayFrom} setFrom={setDayFrom}
+          to={dayTo} setTo={setDayTo}
+          tasks={dayTasks}
+        />
+      )}
     </div>
+  );
+}
+
+function EmployeeDayView({
+  employees, employeeId, setEmployeeId, from, setFrom, to, setTo, tasks,
+}: {
+  employees: Employee[];
+  employeeId: string;
+  setEmployeeId: (s: string) => void;
+  from: string; setFrom: (s: string) => void;
+  to: string; setTo: (s: string) => void;
+  tasks: DailyTask[];
+}) {
+  const employee = employees.find((e) => String(e.id) === employeeId);
+
+  // All activities seen across the range — one color each
+  const activitySet = useMemo(
+    () => Array.from(new Set(tasks.map((t) => t.activity_name || 'Other'))).sort(),
+    [tasks],
+  );
+  const colorByActivity = useMemo(() => {
+    const m: Record<string, string> = {};
+    activitySet.forEach((a, i) => { m[a] = CHART_COLORS[i % CHART_COLORS.length]; });
+    return m;
+  }, [activitySet]);
+
+  // Group tasks by date
+  const days = useMemo(() => {
+    const m: Record<string, { date: string; tasks: DailyTask[]; total: number; perActivity: Record<string, number> }> = {};
+    for (const t of tasks) {
+      const d = t.task_date;
+      if (!m[d]) m[d] = { date: d, tasks: [], total: 0, perActivity: {} };
+      m[d].tasks.push(t);
+      m[d].total += Number(t.hours_spent || 0);
+      const a = t.activity_name || 'Other';
+      m[d].perActivity[a] = (m[d].perActivity[a] || 0) + Number(t.hours_spent || 0);
+    }
+    return Object.values(m).sort((a, b) => a.date.localeCompare(b.date));
+  }, [tasks]);
+
+  const maxDayHours = Math.max(...days.map((d) => d.total), 8); // for scaling bar widths
+
+  return (
+    <>
+      {/* Filters */}
+      <div className="card p-5">
+        <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          <FilterIcon size={16} className="text-brand-600" /> Pick employee and date range
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="label">Employee</label>
+            <Select
+              value={employeeId}
+              options={employees.map((e) => ({ label: e.name, value: String(e.id) }))}
+              onChange={setEmployeeId}
+              placeholder="Select employee"
+            />
+          </div>
+          <div>
+            <label className="label">From</label>
+            <DatePicker value={from} onChange={setFrom} clearable={false} />
+          </div>
+          <div>
+            <label className="label">To</label>
+            <DatePicker value={to} onChange={setTo} clearable={false} />
+          </div>
+        </div>
+      </div>
+
+      {/* Activity composition by day — matches the reference layout */}
+      {days.length === 0 ? (
+        <div className="card p-12 text-center">
+          <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-100 dark:bg-white/[0.06] items-center justify-center mb-3">
+            <FilterIcon size={22} className="text-slate-400" />
+          </div>
+          <div className="text-slate-500 dark:text-slate-400 text-sm">
+            {employee ? <>No tasks logged by <strong>{employee.name}</strong> in this range.</> : 'Pick an employee to see their breakdown.'}
+          </div>
+        </div>
+      ) : (
+        <div className="card p-5 md:p-6">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-5">
+            <div>
+              <h3 className="font-semibold text-lg">Activity composition by day</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {employee?.name} · {days.length} day{days.length === 1 ? '' : 's'} · hours split by activity
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activitySet.map((a) => (
+                <span
+                  key={a}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200"
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ background: colorByActivity[a] }} />
+                  {a}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+            <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4 px-1">
+              <span>Day · activity breakdown</span>
+              <span>Hours</span>
+            </div>
+
+            <div className="space-y-6">
+              {days.map((d) => {
+                const segs: Segment[] = Object.entries(d.perActivity).map(([label, value]) => ({
+                  label, value: Number(value), color: colorByActivity[label],
+                }));
+                const widthPct = (d.total / maxDayHours) * 100;
+                return (
+                  <div key={d.date}>
+                    <div className="flex items-baseline justify-between mb-2 gap-3">
+                      <div>
+                        <div className="font-semibold text-slate-900 dark:text-white">
+                          {new Date(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">{d.date}</div>
+                      </div>
+                      <div className="text-sm tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
+                        <span className="font-bold text-slate-900 dark:text-white">{d.total.toFixed(2)}h</span>
+                        <span className="text-slate-400 dark:text-slate-500"> · {d.tasks.length} task{d.tasks.length === 1 ? '' : 's'}</span>
+                      </div>
+                    </div>
+                    <div style={{ width: `${widthPct}%` }} className="min-w-[20%]">
+                      <SegmentedBar segments={segs} height={14} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                      {segs.map((s) => (
+                        <span key={s.label} className="inline-flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
+                          <span className="font-semibold tabular-nums">{s.value.toFixed(1)}h</span>
+                          <span className="text-slate-500 dark:text-slate-400">{s.label}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -418,6 +594,8 @@ function tasksToCsvRows(tasks: DailyTask[]) {
     'Activity':        t.activity_name || '',
     'Task Title':      t.task_title,
     'Description':     t.description || '',
+    'Assigned By':     t.assigned_by || '',
+    'Reference':       t.reference || '',
     'Start Time':      t.start_time || '',
     'End Time':        t.end_time || '',
     'Time Slot':       timeSlot(t.start_time, t.end_time),

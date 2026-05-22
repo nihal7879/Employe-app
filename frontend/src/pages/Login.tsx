@@ -31,7 +31,7 @@ export default function Login() {
         >
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-100 text-xs mb-6">
-              <Sparkles size={12} /> Employee App · Millicent
+              <Sparkles size={12} /> Employee App · Millicent Technologies
             </div>
             <h1 className="text-4xl font-bold leading-tight">
               Track your day.<br />

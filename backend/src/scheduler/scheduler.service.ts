@@ -4,7 +4,7 @@ import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import { DailyTasksService } from '../daily-tasks/daily-tasks.service';
 import { EmailService } from '../email/email.service';
-import { employeeDailyReportEmail, reminderEmail } from '../email/templates';
+import { adminDailySummaryEmail, employeeDailyReportEmail, reminderEmail } from '../email/templates';
 
 @Injectable()
 export class SchedulerService {
@@ -16,26 +16,32 @@ export class SchedulerService {
     private readonly mail: EmailService,
   ) {}
 
-  // ===== 6:00 AM — yesterday's recap email to every employee =====
-  @Cron('0 0 6 * * *', { name: 'morning-yesterday-recap', timeZone: process.env.TZ || 'Asia/Kolkata' })
-  async sendMorningRecap() {
-    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-    const date = yesterday.toISOString().slice(0, 10);
-    this.logger.log(`Running 6 AM morning recap for ${date}`);
-    await this.dispatchEmployeeReports(date, `Your tasks yesterday — ${date}`);
-  }
-
-  // ===== 12:00 PM — same-day mid-day report =====
-  @Cron('0 0 12 * * *', { name: 'daily-employee-report', timeZone: process.env.TZ || 'Asia/Kolkata' })
+  // ===== 11:00 PM — full-day report to every employee =====
+  @Cron('0 0 23 * * *', { name: 'daily-employee-report', timeZone: process.env.TZ || 'Asia/Kolkata' })
   async sendDailyEmployeeReports() {
     const date = new Date().toISOString().slice(0, 10);
-    this.logger.log(`Running 12 PM daily report for ${date}`);
+    this.logger.log(`Running 11 PM daily report for ${date}`);
     await this.dispatchEmployeeReports(date, `Your Daily Task Report — ${date}`);
+    await this.sendAdminDailySummary(date);
+  }
+
+  // ===== 11:00 PM — team summary of all employees' work to admin =====
+  private async sendAdminDailySummary(date: string) {
+    const admin = process.env.ADMIN_EMAIL;
+    if (!admin) return;
+    const summary = await this.tasks.getAdminDailySummary(date);
+    await this.mail.send({
+      to: admin,
+      subject: `Team Daily Summary — ${date}`,
+      type: 'Daily Summary',
+      html: adminDailySummaryEmail(summary),
+    });
   }
 
   private async dispatchEmployeeReports(date: string, subject: string) {
+    // Employees only (role_id 2) — admins do not receive a personal task report.
     const employees = await this.db('employees')
-      .where({ is_active: true, is_deleted: false })
+      .where({ role_id: 2, is_active: true, is_deleted: false })
       .select('id', 'name', 'email');
 
     for (const emp of employees) {
@@ -96,10 +102,12 @@ export class SchedulerService {
       to: today.toISOString().slice(0, 10),
     };
     const totals = await this.db('daily_tasks')
-      .where('is_deleted', false)
-      .andWhereBetween('task_date', [range.from, range.to])
-      .sum({ hours: 'hours_spent' })
-      .count({ tasks: '*' })
+      .leftJoin('employees', 'daily_tasks.employee_id', 'employees.id')
+      .where('daily_tasks.is_deleted', false)
+      .andWhere('employees.role_id', 2)
+      .andWhereBetween('daily_tasks.task_date', [range.from, range.to])
+      .sum({ hours: 'daily_tasks.hours_spent' })
+      .count({ tasks: 'daily_tasks.id' })
       .first();
     await this.mail.send({
       to: admin,
@@ -122,10 +130,12 @@ export class SchedulerService {
       to: prevMonthEnd.toISOString().slice(0, 10),
     };
     const totals = await this.db('daily_tasks')
-      .where('is_deleted', false)
-      .andWhereBetween('task_date', [range.from, range.to])
-      .sum({ hours: 'hours_spent' })
-      .count({ tasks: '*' })
+      .leftJoin('employees', 'daily_tasks.employee_id', 'employees.id')
+      .where('daily_tasks.is_deleted', false)
+      .andWhere('employees.role_id', 2)
+      .andWhereBetween('daily_tasks.task_date', [range.from, range.to])
+      .sum({ hours: 'daily_tasks.hours_spent' })
+      .count({ tasks: 'daily_tasks.id' })
       .first();
     await this.mail.send({
       to: admin,

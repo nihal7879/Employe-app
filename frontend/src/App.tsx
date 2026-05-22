@@ -4,6 +4,7 @@ import ProtectedRoute from './auth/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
+import MyActivity from './pages/MyActivity';
 import Reports from './pages/Reports';
 import Employees from './pages/admin/Employees';
 import Clients from './pages/admin/Clients';
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route element={<ProtectedRoute employeeOnly />}>
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/my-activity" element={<MyActivity />} />
           </Route>
           <Route element={<ProtectedRoute adminOnly />}>
             <Route path="/reports" element={<Reports />} />

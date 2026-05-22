@@ -69,6 +69,8 @@ export interface DailyTask {
   hours_spent: number;
   task_title: string;
   description?: string;
+  assigned_by?: string;
+  reference?: string;
   task_date: string;
   start_time?: string;
   end_time?: string;

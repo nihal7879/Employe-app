@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronDown, LogOut, Moon, Sun } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import GlobalSearch from './GlobalSearch';
@@ -18,7 +18,7 @@ const titles: Record<string, { title: string; sub: string }> = {
   '/admin/email-logs': { title: 'Notifications', sub: 'Outgoing emails — sent, failed, pending' },
 };
 
-export default function Navbar() {
+export default function Navbar({ onOpenMobileMenu }: { onOpenMobileMenu?: () => void }) {
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const nav = useNavigate();
@@ -38,7 +38,15 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-xl border-b border-slate-200/70 dark:bg-bg/60 dark:border-white/10">
-      <div className="h-16 flex items-center gap-4 px-6">
+      <div className="h-16 flex items-center gap-3 px-4 sm:px-6">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={onOpenMobileMenu}
+          className="md:hidden h-10 w-10 rounded-xl flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:bg-white/[0.04] dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.10] shrink-0"
+          aria-label="Open menu"
+        >
+          <Menu size={18} />
+        </button>
         <div className="min-w-0">
           <h1 className="text-base font-semibold leading-tight truncate">{meta.title}</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{meta.sub}</p>

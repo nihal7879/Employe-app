@@ -7,6 +7,8 @@ export class CreateDailyTaskDto {
   @IsNumber() @Min(0) @Max(24) hours_spent: number;
   @IsString() @MaxLength(255) task_title: string;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsString() @MaxLength(255) assigned_by?: string;
+  @IsOptional() @IsString() @MaxLength(255) reference?: string;
   @IsDateString() task_date: string;
   @IsOptional() @IsString() start_time?: string;
   @IsOptional() @IsString() end_time?: string;
@@ -21,6 +23,8 @@ export class UpdateDailyTaskDto {
   @IsOptional() @IsNumber() @Min(0) @Max(24) hours_spent?: number;
   @IsOptional() @IsString() task_title?: string;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsString() @MaxLength(255) assigned_by?: string;
+  @IsOptional() @IsString() @MaxLength(255) reference?: string;
   @IsOptional() @IsDateString() task_date?: string;
   @IsOptional() @IsString() start_time?: string;
   @IsOptional() @IsString() end_time?: string;
