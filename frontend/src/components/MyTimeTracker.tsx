@@ -64,6 +64,14 @@ function fmtHMS(hours: number) {
 function shortDate(s: string) {
   return new Date(s + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
+function groupHours(tasks: DailyTask[], field: keyof DailyTask, fallback: string) {
+  const m: Record<string, number> = {};
+  for (const t of tasks) {
+    const k = ((t[field] as string) || fallback);
+    m[k] = (m[k] || 0) + Number(t.hours_spent || 0);
+  }
+  return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
+}
 
 export default function MyTimeTracker() {
   const [view, setView] = useState<View>('day');
@@ -95,6 +103,9 @@ export default function MyTimeTracker() {
   }, [tasks]);
 
   const totalHours = tasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0);
+
+  const byClient = useMemo(() => groupHours(tasks, 'client_name', '—'), [tasks]);
+  const byActivity = useMemo(() => groupHours(tasks, 'activity_name', 'Other'), [tasks]);
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 md:p-6 space-y-5">
@@ -157,11 +168,15 @@ export default function MyTimeTracker() {
           <a href="/tasks" className="btn-primary inline-flex">Log a task</a>
         </div>
       ) : (
-        view === 'day' ? (
-          <DayTimeline tasks={tasks} projectColors={projectColors} />
-        ) : (
-          <DaySections tasks={tasks} projectColors={projectColors} />
-        )
+        <div className="space-y-6">
+          {view === 'day'
+            ? <DayTimeline tasks={tasks} projectColors={projectColors} />
+            : <DaySections tasks={tasks} projectColors={projectColors} />}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+            <BreakdownList title="Hours by client" rows={byClient} />
+            <BreakdownList title="Hours by activity" rows={byActivity} />
+          </div>
+        </div>
       )}
     </motion.div>
   );
@@ -397,6 +412,47 @@ function DaySections({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
           <DayTimeline tasks={dayTasks} projectColors={projectColors} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ---------------- breakdown list (project / client / activity) ---------------- */
+
+function BreakdownList({ title, rows, colors }: {
+  title: string;
+  rows: { name: string; hours: number }[];
+  colors?: Record<string, string>;
+}) {
+  const max = Math.max(...rows.map((r) => r.hours), 1);
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">{title}</div>
+      <div className="space-y-2.5">
+        {rows.length === 0 && <div className="text-sm text-slate-400">No data.</div>}
+        {rows.map((r, i) => {
+          const color = colors?.[r.name] || COLORS[i % COLORS.length];
+          return (
+            <div key={r.name} className="flex items-center gap-3">
+              <div className="flex items-center gap-2 w-32 shrink-0">
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
+                <span className="text-sm font-medium text-slate-900 dark:text-white truncate">{r.name}</span>
+              </div>
+              <div className="flex-1 h-2.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${(r.hours / max) * 100}%` }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                  className="h-full rounded-full"
+                  style={{ background: color }}
+                />
+              </div>
+              <div className="w-16 text-right tabular-nums">
+                <span className="text-sm font-bold text-slate-900 dark:text-white">{r.hours.toFixed(1)}h</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
