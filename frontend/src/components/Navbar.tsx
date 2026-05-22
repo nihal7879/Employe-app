@@ -8,8 +8,9 @@ import GlobalSearch from './GlobalSearch';
 import Notifications from './Notifications';
 
 const titles: Record<string, { title: string; sub: string }> = {
-  '/':                 { title: 'Dashboard',     sub: "Welcome back — here's what's happening across your team" },
+  '/':                 { title: 'Dashboard',     sub: "Welcome back — here's your work at a glance" },
   '/tasks':            { title: 'My Tasks',      sub: 'Log your day, build your streak' },
+  '/my-activity':      { title: 'My Activity',   sub: 'Your time tracked across projects' },
   '/reports':          { title: 'Reports',       sub: 'Daily, weekly, and monthly insights' },
   '/admin/employees':  { title: 'Employees',     sub: 'Manage your team' },
   '/admin/clients':    { title: 'Clients',       sub: 'All clients you serve' },

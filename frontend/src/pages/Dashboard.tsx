@@ -13,6 +13,7 @@ import {
 import StatCard from '../components/StatCard';
 import SegmentedBar, { Segment } from '../components/SegmentedBar';
 import AnimatedNumber from '../components/AnimatedNumber';
+import EmployeeActivityCharts from '../components/EmployeeActivityCharts';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import type { DailyTask } from '../types';
@@ -632,6 +633,9 @@ export default function Dashboard() {
           </motion.div>
         </div>
       )}
+
+      {/* Activity overview charts — employees only */}
+      {!isAdmin && <EmployeeActivityCharts />}
 
       {/* My today — employees only (full breakdown lives on the My Activity page) */}
       {!isAdmin && myToday && (

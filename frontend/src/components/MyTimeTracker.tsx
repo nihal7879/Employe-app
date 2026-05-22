@@ -7,7 +7,7 @@ import DatePicker from './ui/DatePicker';
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16', '#F97316', '#14B8A6'];
 
-type View = 'day' | 'week' | 'month';
+type View = 'day' | 'week' | 'month' | 'range';
 
 const ymd = (d: Date) => {
   const y = d.getFullYear();
@@ -16,6 +16,10 @@ const ymd = (d: Date) => {
   return `${y}-${m}-${dd}`;
 };
 const todayStr = () => ymd(new Date());
+const monthStartStr = () => {
+  const d = new Date();
+  return ymd(new Date(d.getFullYear(), d.getMonth(), 1));
+};
 
 function rangeFor(view: View, dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -50,13 +54,6 @@ function fmtHour(min: number) {
   let h12 = h % 12; if (h12 === 0) h12 = 12;
   return `${h12}${period}`;
 }
-function fmtDur(min: number) {
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  if (h && m) return `${h}h ${m}m`;
-  if (h) return `${h}h`;
-  return `${m}m`;
-}
 function fmtHMS(hours: number) {
   const total = Math.round(hours * 3600);
   const h = Math.floor(total / 3600);
@@ -71,10 +68,15 @@ function shortDate(s: string) {
 export default function MyTimeTracker() {
   const [view, setView] = useState<View>('day');
   const [date, setDate] = useState(todayStr());
+  const [customFrom, setCustomFrom] = useState(monthStartStr());
+  const [customTo, setCustomTo] = useState(todayStr());
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const range = useMemo(() => rangeFor(view, date), [view, date]);
+  const range = useMemo(
+    () => (view === 'range' ? { from: customFrom, to: customTo } : rangeFor(view, date)),
+    [view, date, customFrom, customTo],
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -93,53 +95,6 @@ export default function MyTimeTracker() {
   }, [tasks]);
 
   const totalHours = tasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0);
-
-  // Hours per project (for breakdown)
-  const byProject = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const t of tasks) {
-      const p = t.project_name || '—';
-      m[p] = (m[p] || 0) + Number(t.hours_spent || 0);
-    }
-    return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
-  }, [tasks]);
-
-  // Hours per activity (development / testing / client meeting / …)
-  const byActivity = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const t of tasks) {
-      const a = t.activity_name || 'Other';
-      m[a] = (m[a] || 0) + Number(t.hours_spent || 0);
-    }
-    return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
-  }, [tasks]);
-  const activityColors = useMemo(() => {
-    const m: Record<string, string> = {};
-    // offset palette so activity colors differ from project colors
-    byActivity.forEach((a, i) => { m[a.name] = COLORS[(i + 3) % COLORS.length]; });
-    return m;
-  }, [byActivity]);
-
-  // Break time = gaps between consecutive tracked tasks, summed per day across the range
-  const totalBreakMin = useMemo(() => {
-    const byDate: Record<string, { s: number; e: number }[]> = {};
-    for (const t of tasks) {
-      const s = toMin(t.start_time), e = toMin(t.end_time);
-      if (s == null || e == null || e <= s) continue;
-      if (!byDate[t.task_date]) byDate[t.task_date] = [];
-      byDate[t.task_date].push({ s, e });
-    }
-    let total = 0;
-    for (const d in byDate) {
-      const arr = byDate[d].sort((a, b) => a.s - b.s);
-      let cursor = arr[0].s;
-      for (const seg of arr) {
-        if (seg.s > cursor) total += seg.s - cursor;
-        cursor = Math.max(cursor, seg.e);
-      }
-    }
-    return total;
-  }, [tasks]);
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 md:p-6 space-y-5">
@@ -163,7 +118,7 @@ export default function MyTimeTracker() {
 
         <div className="lg:ml-auto flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-xl bg-slate-100 dark:bg-white/[0.06] p-0.5">
-            {(['day', 'week', 'month'] as View[]).map((v) => (
+            {(['day', 'week', 'month', 'range'] as View[]).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -173,20 +128,22 @@ export default function MyTimeTracker() {
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
                 }`}
               >
-                {v}
+                {v === 'range' ? 'Custom' : v}
               </button>
             ))}
           </div>
-          <div className="w-44">
-            <DatePicker value={date} onChange={setDate} clearable={false} />
-          </div>
+          {view === 'range' ? (
+            <div className="flex items-center gap-2">
+              <div className="w-40"><DatePicker value={customFrom} onChange={setCustomFrom} clearable={false} /></div>
+              <span className="text-slate-400 text-sm">→</span>
+              <div className="w-40"><DatePicker value={customTo} onChange={setCustomTo} clearable={false} /></div>
+            </div>
+          ) : (
+            <div className="w-44">
+              <DatePicker value={date} onChange={setDate} clearable={false} />
+            </div>
+          )}
         </div>
-      </div>
-
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <Stat icon={<Clock size={15} />} label="Total hours" value={`${totalHours.toFixed(2)} h`} accent="brand" />
-        <Stat icon={<Coffee size={15} />} label="Break" value={fmtDur(totalBreakMin)} accent="ok" />
       </div>
 
       {loading && tasks.length === 0 ? (
@@ -196,18 +153,15 @@ export default function MyTimeTracker() {
           <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-50 dark:bg-white/[0.06] items-center justify-center mb-3">
             <Clock size={24} className="text-slate-400" />
           </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No tasks logged in this {view}.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No tasks logged in this {view === 'range' ? 'range' : view}.</p>
           <a href="/tasks" className="btn-primary inline-flex">Log a task</a>
         </div>
       ) : (
-        <div className="space-y-6">
-          {view === 'day' ? (
-            <DayTimeline tasks={tasks} projectColors={projectColors} />
-          ) : (
-            <DaySections tasks={tasks} projectColors={projectColors} />
-          )}
-          <Breakdowns byProject={byProject} projectColors={projectColors} byActivity={byActivity} activityColors={activityColors} />
-        </div>
+        view === 'day' ? (
+          <DayTimeline tasks={tasks} projectColors={projectColors} />
+        ) : (
+          <DaySections tasks={tasks} projectColors={projectColors} />
+        )
       )}
     </motion.div>
   );
@@ -234,7 +188,7 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
   const winEnd = Math.ceil(maxEnd / 60) * 60;
   const span = Math.max(1, winEnd - winStart);
 
-  // Breaks = gaps between consecutive work blocks (from first task start onward)
+  // Break gaps between consecutive work blocks (from first task start onward)
   const breaks: { start: number; end: number }[] = [];
   let cursor = timed[0].start;
   for (const b of timed) {
@@ -243,7 +197,6 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
   }
   const breakMin = breaks.reduce((s, b) => s + (b.end - b.start), 0);
 
-  // hour ticks every 3 hours (6am, 9am, 12pm…) to keep it clean like the reference
   const ticks: number[] = [];
   const step = span > 8 * 60 ? 180 : 120;
   for (let m = winStart; m <= winEnd; m += step) ticks.push(m);
@@ -255,7 +208,7 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
         <span className="inline-flex items-center gap-1.5"><Coffee size={13} /> {fmtDur(breakMin)} break</span>
       </div>
 
-      {/* Timeline — rounded pills on a light track; breaks shown as gray gap segments */}
+      {/* Timeline — rounded pills; breaks shown as gray gap segments */}
       <div className="pt-1">
         <div className="relative h-5 rounded-full bg-slate-100 dark:bg-white/[0.06]">
           {breaks.map((bk, i) => {
@@ -286,15 +239,19 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
           })}
         </div>
         <div className="relative h-4 mt-1.5">
-          {ticks.map((m) => (
-            <span
-              key={m}
-              className="absolute -translate-x-1/2 text-[10px] text-slate-400 tabular-nums"
-              style={{ left: `${((m - winStart) / span) * 100}%` }}
-            >
-              {fmtHour(m)}
-            </span>
-          ))}
+          {ticks.map((m) => {
+            const pct = ((m - winStart) / span) * 100;
+            const transform = pct <= 0.5 ? 'translateX(0)' : pct >= 99.5 ? 'translateX(-100%)' : 'translateX(-50%)';
+            return (
+              <span
+                key={m}
+                className="absolute text-[10px] text-slate-400 tabular-nums"
+                style={{ left: `${pct}%`, transform }}
+              >
+                {fmtHour(m)}
+              </span>
+            );
+          })}
         </div>
       </div>
 
@@ -303,7 +260,15 @@ function DayTimeline({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
   );
 }
 
-/* Project / Work order table — Hubstaff-style (tasks + inferred break rows) */
+function fmtDur(min: number) {
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+/* Project / Work order table — tasks + inferred break rows */
 type Row =
   | { kind: 'task'; t: DailyTask; s: number | null; e: number | null }
   | { kind: 'break'; s: number; e: number };
@@ -311,7 +276,6 @@ type Row =
 function DayTable({ tasks, projectColors, note }: {
   tasks: DailyTask[]; projectColors: Record<string, string>; note?: string;
 }) {
-  // tasks with valid times, to infer break gaps between them
   const timed = tasks
     .map((t) => ({ s: toMin(t.start_time), e: toMin(t.end_time) }))
     .filter((x): x is { s: number; e: number } => x.s != null && x.e != null && x.e > x.s)
@@ -402,7 +366,7 @@ function DayTable({ tasks, projectColors, note }: {
   );
 }
 
-/* ---------------- Week / Month — per-day timesheet sections (scrollable) ---------------- */
+/* ---------------- Week / Month / Custom — per-day timesheet sections (scrollable) ---------------- */
 
 function DaySections({ tasks, projectColors }: { tasks: DailyTask[]; projectColors: Record<string, string> }) {
   const days = useMemo(() => {
@@ -437,84 +401,3 @@ function DaySections({ tasks, projectColors }: { tasks: DailyTask[]; projectColo
   );
 }
 
-/* ---------------- Project + activity breakdowns ---------------- */
-
-function Breakdowns({
-  byProject, projectColors, byActivity, activityColors,
-}: {
-  byProject: { name: string; hours: number }[];
-  projectColors: Record<string, string>;
-  byActivity: { name: string; hours: number }[];
-  activityColors: Record<string, string>;
-}) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
-      <BreakdownList title="Hours by project" rows={byProject} colors={projectColors} />
-      <BreakdownList title="Hours by activity" rows={byActivity} colors={activityColors} />
-    </div>
-  );
-}
-
-function BreakdownList({ title, rows, colors }: {
-  title: string;
-  rows: { name: string; hours: number }[];
-  colors: Record<string, string>;
-}) {
-  const max = Math.max(...rows.map((r) => r.hours), 1);
-  const total = rows.reduce((s, r) => s + r.hours, 0);
-  return (
-    <div>
-      <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">{title}</div>
-      <div className="space-y-2.5">
-        {rows.length === 0 && <div className="text-sm text-slate-400">No data.</div>}
-        {rows.map((r) => {
-          const pct = total ? Math.round((r.hours / total) * 100) : 0;
-          return (
-            <div key={r.name} className="flex items-center gap-3">
-              <div className="flex items-center gap-2 w-36 shrink-0">
-                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: colors[r.name] }} />
-                <span className="text-sm font-medium text-slate-900 dark:text-white truncate">{r.name}</span>
-              </div>
-              <div className="flex-1 h-2.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(r.hours / max) * 100}%` }}
-                  transition={{ duration: 0.8, ease: 'easeOut' }}
-                  className="h-full rounded-full"
-                  style={{ background: colors[r.name] }}
-                />
-              </div>
-              <div className="w-24 text-right tabular-nums">
-                <span className="text-sm font-bold text-slate-900 dark:text-white">{r.hours.toFixed(1)}h</span>
-                <span className="text-xs font-normal text-slate-400 ml-1">{pct}%</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- small stat tile ---------------- */
-
-const ACCENTS: Record<string, string> = {
-  brand: 'bg-brand-500/15 text-brand-500',
-  cyan: 'bg-cyan-500/15 text-cyan-500',
-  ok: 'bg-emerald-500/15 text-emerald-500',
-  pink: 'bg-pink-500/15 text-pink-500',
-};
-
-function Stat({ icon, label, value, sub, accent = 'brand' }: { icon: React.ReactNode; label: string; value: string; sub?: string; accent?: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/10 px-3 py-2.5 flex items-center gap-3">
-      <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${ACCENTS[accent] || ACCENTS.brand}`}>{icon}</div>
-      <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-medium">{label}</div>
-        <div className="text-sm font-bold text-slate-900 dark:text-white tabular-nums truncate">
-          {value}{sub && <span className="text-xs font-normal text-slate-400 ml-1">{sub}</span>}
-        </div>
-      </div>
-    </div>
-  );
-}

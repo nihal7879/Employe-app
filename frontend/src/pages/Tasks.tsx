@@ -241,13 +241,6 @@ export default function Tasks() {
                     <td className="table-td">
                       <div className="font-medium text-slate-900 dark:text-white">{t.task_title}</div>
                       {t.description && <div className="text-xs text-ink-mute line-clamp-1">{t.description}</div>}
-                      {(t.assigned_by || t.reference) && (
-                        <div className="text-[11px] text-ink-mute mt-0.5">
-                          {t.assigned_by && <>By {t.assigned_by}</>}
-                          {t.assigned_by && t.reference && ' · '}
-                          {t.reference && <>Ref: {t.reference}</>}
-                        </div>
-                      )}
                     </td>
                     <td className="table-td text-right tabular-nums font-semibold text-slate-900 dark:text-white">{Number(t.hours_spent).toFixed(2)}</td>
                     <td className="table-td text-right">
