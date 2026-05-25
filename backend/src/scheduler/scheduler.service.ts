@@ -17,7 +17,7 @@ export class SchedulerService {
   ) {}
 
   // ===== 11:00 PM — full-day report to every employee =====
-  @Cron('0 0 23 * * *', { name: 'daily-employee-report', timeZone: process.env.TZ || 'Asia/Kolkata' })
+  @Cron('0 0 23 * * *', { name: 'daily-employee-report', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async sendDailyEmployeeReports() {
     const date = new Date().toISOString().slice(0, 10);
     this.logger.log(`Running 11 PM daily report for ${date}`);
@@ -65,7 +65,7 @@ export class SchedulerService {
   }
 
   // ===== 6:00 PM — reminder for non-submitters =====
-  @Cron('0 0 18 * * *', { name: 'pending-submission-reminder', timeZone: process.env.TZ || 'Asia/Kolkata' })
+  @Cron('0 0 18 * * *', { name: 'pending-submission-reminder', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async sendPendingReminders() {
     const date = new Date().toISOString().slice(0, 10);
     const submittedIds = await this.db('daily_tasks')
@@ -90,7 +90,7 @@ export class SchedulerService {
   }
 
   // ===== Monday 8:00 AM — weekly summary to admin =====
-  @Cron(CronExpression.EVERY_WEEK, { name: 'weekly-admin-summary', timeZone: process.env.TZ || 'Asia/Kolkata' })
+  @Cron(CronExpression.EVERY_WEEK, { name: 'weekly-admin-summary', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async weeklyAdminSummary() {
     const admin = process.env.ADMIN_EMAIL;
     if (!admin) return;
@@ -118,7 +118,7 @@ export class SchedulerService {
   }
 
   // ===== 1st of every month 8:00 AM — monthly summary to admin =====
-  @Cron('0 0 8 1 * *', { name: 'monthly-admin-summary', timeZone: process.env.TZ || 'Asia/Kolkata' })
+  @Cron('0 0 8 1 * *', { name: 'monthly-admin-summary', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async monthlyAdminSummary() {
     const admin = process.env.ADMIN_EMAIL;
     if (!admin) return;
