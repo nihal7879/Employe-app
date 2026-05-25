@@ -583,51 +583,6 @@ export default function Dashboard() {
             })()}
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-            onClick={() => (window.location.href = '/reports?type=pending')}
-            className="card card-hover p-5 cursor-pointer group"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="h-9 w-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
-                <AlertCircle size={18} />
-              </div>
-              <div>
-                <div className="font-semibold flex items-center gap-2">
-                  Pending submissions
-                  <span className="text-slate-300 opacity-0 group-hover:opacity-100 group-hover:text-brand-500 transition-all">→</span>
-                </div>
-                <div className="text-xs text-slate-500">Employees who haven't logged today</div>
-              </div>
-              <span className="ml-auto pill-bad">{pending.length}</span>
-            </div>
-            {pending.length === 0 ? (
-              <div className="text-center py-10">
-                <div className="inline-flex h-14 w-14 rounded-2xl bg-emerald-50 text-emerald-600 items-center justify-center mb-3">
-                  <CheckCircle2 size={24} />
-                </div>
-                <p className="text-sm text-slate-500">Everyone submitted today.</p>
-              </div>
-            ) : (
-              <table className="w-full">
-                <thead><tr>
-                  <th className="table-th">Employee</th>
-                  <th className="table-th">Department</th>
-                </tr></thead>
-                <tbody>
-                  {pending.map((p: any) => (
-                    <tr key={p.id}>
-                      <td className="table-td">
-                        <div className="font-medium text-slate-900">{p.name}</div>
-                        <div className="text-xs text-slate-500">{p.email}</div>
-                      </td>
-                      <td className="table-td">{p.department_name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </motion.div>
         </div>
       )}
 
