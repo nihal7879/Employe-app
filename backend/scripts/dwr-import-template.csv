@@ -1,0 +1,7 @@
+employee,task_date,start_time,end_time,hours_spent,client,project,activity,task_title,description,assigned_by,reference,status,remarks,is_break
+EMP-001,2026-05-22,9:55 AM,11:20 AM,,,pricespy,Development,Strategy point,"Working on the strategy point",nirav sir,,Submitted,Completed,
+EMP-001,2026-05-22,11:20 AM,1:35 PM,,,pricespy,Development,Strategy fix,"Fixing the issue in the strategy and adding the date range in the dashboard pricespy",nirav sir,,Submitted,Completed,
+EMP-001,2026-05-22,1:35 PM,2:06 PM,,,,,Lunch break,"Lunch break",,,,,yes
+EMP-001,2026-05-22,2:06 PM,3:20 PM,,,Trade Mirror,Development,Employee feature,"Working on employee feature",nirav sir,,Submitted,Completed,
+EMP-001,2026-05-22,3:20 PM,5:35 PM,,,Trade Mirror,Development,Admin dashboard,"Working on the admin dashboard feature",nirav sir,,Submitted,Completed,
+EMP-001,2026-05-22,5:35 PM,6:55 PM,,,Trade Mirror,Development,Login page,"Working on login page",nirav sir,,Submitted,Completed,
