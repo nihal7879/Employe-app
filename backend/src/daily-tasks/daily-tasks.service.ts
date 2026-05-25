@@ -115,6 +115,30 @@ export class DailyTasksService {
     return { date, rows, grand_total_hours, grand_total_tasks };
   }
 
+  // Detailed per-employee digest for the admin (each employee's full task list).
+  async getAdminDailyDigest(date: string) {
+    const employees = await this.db('employees')
+      .where({ role_id: 2, is_active: true, is_deleted: false })
+      .select('id', 'name')
+      .orderBy('name');
+
+    const allTasks = await this.base().andWhere('daily_tasks.task_date', date);
+    const byEmp = new Map<number, any[]>();
+    for (const t of allTasks) {
+      if (!byEmp.has(t.employee_id)) byEmp.set(t.employee_id, []);
+      byEmp.get(t.employee_id)!.push(t);
+    }
+
+    const sections = employees.map((e: any) => {
+      const tasks = byEmp.get(e.id) || [];
+      const total_hours = tasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0);
+      return { employee_name: e.name, total_hours, task_count: tasks.length, tasks };
+    });
+    const grand_total_hours = sections.reduce((s, r) => s + r.total_hours, 0);
+    const grand_total_tasks = sections.reduce((s, r) => s + r.task_count, 0);
+    return { date, sections, grand_total_hours, grand_total_tasks };
+  }
+
   async getEmployeeRangeReport(employee_id: number, from: string, to: string) {
     const rows = await this.base()
       .andWhere('daily_tasks.employee_id', employee_id)

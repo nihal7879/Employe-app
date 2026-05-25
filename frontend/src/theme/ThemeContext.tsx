@@ -15,7 +15,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'dark') root.classList.add('dark');
+    // Login is always light — never apply dark on the login route.
+    const onLogin = window.location.pathname.endsWith('/login');
+    if (theme === 'dark' && !onLogin) root.classList.add('dark');
     else root.classList.remove('dark');
     localStorage.setItem('em_theme', theme);
   }, [theme]);

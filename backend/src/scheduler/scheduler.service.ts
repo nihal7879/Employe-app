@@ -4,7 +4,7 @@ import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import { DailyTasksService } from '../daily-tasks/daily-tasks.service';
 import { EmailService } from '../email/email.service';
-import { adminDailySummaryEmail, employeeDailyReportEmail, reminderEmail } from '../email/templates';
+import { adminDailyDigestEmail, employeeDailyReportEmail, reminderEmail } from '../email/templates';
 
 @Injectable()
 export class SchedulerService {
@@ -25,16 +25,16 @@ export class SchedulerService {
     await this.sendAdminDailySummary(date);
   }
 
-  // ===== 11:00 PM — team summary of all employees' work to admin =====
+  // ===== 11:00 PM — detailed per-employee digest of the day's work to admin =====
   private async sendAdminDailySummary(date: string) {
     const admin = process.env.ADMIN_EMAIL;
     if (!admin) return;
-    const summary = await this.tasks.getAdminDailySummary(date);
+    const digest = await this.tasks.getAdminDailyDigest(date);
     await this.mail.send({
       to: admin,
       subject: `Team Daily Summary — ${date}`,
       type: 'Daily Summary',
-      html: adminDailySummaryEmail(summary),
+      html: adminDailyDigestEmail(digest),
     });
   }
 
@@ -74,8 +74,10 @@ export class SchedulerService {
       .distinct('employee_id')
       .pluck('employee_id');
 
+
+      // Employees only (role_id 2) — admins are not tracked, so no reminder for them.
     const pending = await this.db('employees')
-      .where({ is_active: true, is_deleted: false })
+      .where({ role_id: 2, is_active: true, is_deleted: false })
       .whereNotIn('id', submittedIds.length ? submittedIds : [0])
       .select('id', 'name', 'email');
 
