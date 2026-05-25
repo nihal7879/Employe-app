@@ -7,6 +7,7 @@ import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import DatePicker from '../../components/ui/DatePicker';
+import { TableSkeleton } from '../../components/Skeleton';
 
 interface Role { id: number; role_name: string; }
 
@@ -24,16 +25,22 @@ export default function Employees() {
   const [editing, setEditing] = useState<Employee | null>(null);
   const [form, setForm] = useState<any>(emptyForm);
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    const [e, d, r] = await Promise.all([
-      api.get('/employees', { params: { search: search || undefined } }),
-      api.get('/departments'),
-      api.get('/roles'),
-    ]);
-    setEmployees(e.data);
-    setDepartments(d.data);
-    setRoles(r.data);
+    setLoading(true);
+    try {
+      const [e, d, r] = await Promise.all([
+        api.get('/employees', { params: { search: search || undefined } }),
+        api.get('/departments'),
+        api.get('/roles'),
+      ]);
+      setEmployees(e.data);
+      setDepartments(d.data);
+      setRoles(r.data);
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [search]);
 
@@ -104,7 +111,8 @@ export default function Employees() {
               <th className="table-th"></th>
             </tr></thead>
             <tbody>
-              {employees.map((e) => (
+              {loading && <TableSkeleton rows={6} cols={7} />}
+              {!loading && employees.map((e) => (
                 <tr key={e.id}>
                   <td className="table-td">{e.employee_code}</td>
                   <td className="table-td font-medium text-slate-900 dark:text-white">{e.name}</td>
@@ -128,7 +136,7 @@ export default function Employees() {
                   </td>
                 </tr>
               ))}
-              {employees.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No employees.</td></tr>}
+              {!loading && employees.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No employees.</td></tr>}
             </tbody>
           </table>
         </div>

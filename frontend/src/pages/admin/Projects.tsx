@@ -7,6 +7,7 @@ import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import DatePicker from '../../components/ui/DatePicker';
+import { TableSkeleton } from '../../components/Skeleton';
 
 const empty = { client_id: '', project_code: '', project_name: '', start_date: '', end_date: '', project_status: 'Active' };
 
@@ -31,10 +32,16 @@ export default function Projects() {
   const [editing, setEditing] = useState<Project | null>(null);
   const [form, setForm] = useState<any>(empty);
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = async () => {
-    const [p, c] = await Promise.all([api.get('/projects'), api.get('/clients')]);
-    setProjects(p.data); setClients(c.data);
+    setLoading(true);
+    try {
+      const [p, c] = await Promise.all([api.get('/projects'), api.get('/clients')]);
+      setProjects(p.data); setClients(c.data);
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -91,7 +98,8 @@ export default function Projects() {
             <th className="table-th"></th>
           </tr></thead>
           <tbody>
-            {projects.map((p) => (
+            {loading && <TableSkeleton rows={6} cols={7} />}
+            {!loading && projects.map((p) => (
               <tr key={p.id}>
                 <td className="table-td">{p.project_code}</td>
                 <td className="table-td font-medium text-slate-900 dark:text-white">{p.project_name}</td>
@@ -122,7 +130,7 @@ export default function Projects() {
                 </td>
               </tr>
             ))}
-            {projects.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No projects.</td></tr>}
+            {!loading && projects.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No projects.</td></tr>}
           </tbody>
         </table>
       </div>

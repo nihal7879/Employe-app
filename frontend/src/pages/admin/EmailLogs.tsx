@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Mail, RefreshCw, CheckCircle2, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import Select from '../../components/Select';
+import { TableSkeleton } from '../../components/Skeleton';
 
 interface EmailLog {
   id: number;
@@ -103,7 +104,8 @@ export default function EmailLogs() {
             <th className="table-th">Status</th>
           </tr></thead>
           <tbody>
-            {logs.map((l) => (
+            {loading && <TableSkeleton rows={6} cols={5} />}
+            {!loading && logs.map((l) => (
               <tr key={l.id}>
                 <td className="table-td whitespace-nowrap text-slate-500 dark:text-slate-400">{fmt(l.sent_at || l.created_at)}</td>
                 <td className="table-td font-medium text-slate-900 dark:text-white">{l.email_to}</td>
@@ -121,9 +123,9 @@ export default function EmailLogs() {
                 </td>
               </tr>
             ))}
-            {logs.length === 0 && (
+            {!loading && logs.length === 0 && (
               <tr><td colSpan={5} className="table-td text-center text-slate-400 py-10">
-                {loading ? 'Loading…' : 'No emails match these filters.'}
+                No emails match these filters.
               </td></tr>
             )}
           </tbody>

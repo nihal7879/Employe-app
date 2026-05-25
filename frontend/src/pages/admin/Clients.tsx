@@ -6,6 +6,7 @@ import type { Client } from '../../types';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { TableSkeleton } from '../../components/Skeleton';
 
 const STATUS_OPTIONS = [
   { label: 'Active', value: 'Active', color: '#10B981' },
@@ -18,8 +19,13 @@ export default function Clients() {
   const [editing, setEditing] = useState<Client | null>(null);
   const [form, setForm] = useState({ client_name: '', status: 'Active' });
   const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const load = async () => setClients((await api.get('/clients')).data);
+  const load = async () => {
+    setLoading(true);
+    try { setClients((await api.get('/clients')).data); }
+    finally { setLoading(false); }
+  };
   useEffect(() => { load(); }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -66,7 +72,8 @@ export default function Clients() {
             </tr>
           </thead>
           <tbody>
-            {clients.map((c) => (
+            {loading && <TableSkeleton rows={5} cols={3} />}
+            {!loading && clients.map((c) => (
               <tr key={c.id}>
                 <td className="table-td font-medium text-slate-900">{c.client_name}</td>
                 <td className="table-td">
@@ -88,7 +95,7 @@ export default function Clients() {
                 </td>
               </tr>
             ))}
-            {clients.length === 0 && (
+            {!loading && clients.length === 0 && (
               <tr><td colSpan={3} className="table-td text-center text-slate-400">No clients.</td></tr>
             )}
           </tbody>
