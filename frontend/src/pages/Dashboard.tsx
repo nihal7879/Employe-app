@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Users, FolderKanban, AlertTriangle, Clock, CheckCircle2,
-  TrendingUp, Activity as ActivityIcon, Flame, Layers, AlertCircle, CalendarRange,
+  TrendingUp, Activity as ActivityIcon, Flame, Layers, CalendarRange,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -33,7 +33,6 @@ export default function Dashboard() {
   const isAdmin = user?.role === 'Admin';
   const [admin, setAdmin] = useState<any>(null);
   const [myToday, setMyToday] = useState<{ total_hours: number; tasks: DailyTask[] } | null>(null);
-  const [pending, setPending] = useState<any[]>([]);
   const [monthTasks, setMonthTasks] = useState<DailyTask[]>([]);
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'quarter' | 'year'>('month');
 
@@ -47,7 +46,6 @@ export default function Dashboard() {
             .then((rr) => setMonthTasks(rr.data || [])).catch(() => {});
         }
       }).catch(() => {});
-      api.get('/reports/daily', { params: { type: 'pending', date: today() } }).then((r) => setPending(r.data || [])).catch(() => {});
     } else {
       api.get('/daily-tasks/my/today').then((r) => setMyToday(r.data)).catch(() => {});
     }
