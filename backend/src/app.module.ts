@@ -13,6 +13,7 @@ import { DepartmentsModule } from './departments/departments.module';
 import { EmailModule } from './email/email.module';
 import { EmailLogsModule } from './email/email-logs.module';
 import { EmployeesModule } from './employees/employees.module';
+import { HealthController } from './health/health.controller';
 import { ProjectsModule } from './projects/projects.module';
 import { ReportsModule } from './reports/reports.module';
 import { RolesModule } from './roles/roles.module';
@@ -37,6 +38,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     AnalyticsModule,
     SchedulerModule,
   ],
+  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],
 })
 export class AppModule {}
