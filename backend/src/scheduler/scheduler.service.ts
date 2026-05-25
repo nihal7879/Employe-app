@@ -47,6 +47,8 @@ export class SchedulerService {
     for (const emp of employees) {
       try {
         const report = await this.tasks.getEmployeeReport(emp.id, date);
+        // No submission today → don't send an empty daily report to this person.
+        if (!report.tasks || report.tasks.length === 0) continue;
         await this.mail.send({
           to: emp.email,
           subject,
