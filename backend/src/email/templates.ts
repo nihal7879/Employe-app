@@ -167,12 +167,20 @@ export function adminDailyDigestEmail(opts: {
   </div>`;
 }
 
+const APP_URL = 'https://employe-app-millicent.vercel.app';
+
 export function reminderEmail(name: string, date: string) {
   return `
   <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;color:#111827;">
     <h2>Hi ${escape(name)},</h2>
     <p>You haven't submitted your daily task report for <strong>${date}</strong> yet.</p>
     <p>Please log in to the Employee App and submit your tasks.</p>
+    <p style="margin:24px 0;">
+      <a href="${APP_URL}" style="display:inline-block;background:#7C3AED;color:#ffffff;text-decoration:none;padding:11px 22px;border-radius:8px;font-weight:600;font-size:14px;">
+        Open Employee App →
+      </a>
+    </p>
+    <p style="color:#6b7280;font-size:12px;">Or paste this link in your browser: <a href="${APP_URL}" style="color:#7C3AED;">${APP_URL}</a></p>
   </div>`;
 }
 
