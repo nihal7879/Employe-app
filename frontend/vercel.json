@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "build": {
+    "env": {
+      "VITE_API_URL": "/api",
+      "VITE_GOOGLE_CLIENT_ID": "772615919029-knp1027nepal0pbmugr7aak63jn8r0dq.apps.googleusercontent.com"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
