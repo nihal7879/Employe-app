@@ -129,14 +129,16 @@ export class DailyTasksService {
       byEmp.get(t.employee_id)!.push(t);
     }
 
-    const sections = employees.map((e: any) => {
+    const all = employees.map((e: any) => {
       const tasks = byEmp.get(e.id) || [];
       const total_hours = tasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0);
       return { employee_name: e.name, total_hours, task_count: tasks.length, tasks };
     });
+    const sections = all.filter((s) => s.task_count > 0);
+    const notSubmitted = all.filter((s) => s.task_count === 0).map((s) => s.employee_name);
     const grand_total_hours = sections.reduce((s, r) => s + r.total_hours, 0);
     const grand_total_tasks = sections.reduce((s, r) => s + r.task_count, 0);
-    return { date, sections, grand_total_hours, grand_total_tasks };
+    return { date, sections, notSubmitted, grand_total_hours, grand_total_tasks };
   }
 
   async getEmployeeRangeReport(employee_id: number, from: string, to: string) {
