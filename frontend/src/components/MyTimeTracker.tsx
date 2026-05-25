@@ -8,7 +8,6 @@ import type { DailyTask } from '../types';
 import DatePicker from './ui/DatePicker';
 import ConfirmDialog from './ConfirmDialog';
 import Modal from './Modal';
-import { Textarea } from './ui/Textarea';
 import { Skeleton } from './Skeleton';
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16', '#F97316', '#14B8A6'];
@@ -262,7 +261,7 @@ function EditTaskModal({ task, onClose, onSaved }: {
           </div>
           <div>
             <label className="label">Description</label>
-            <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you work on?" />
+            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you work on?" className="resize-y" />
           </div>
           <div className="flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>

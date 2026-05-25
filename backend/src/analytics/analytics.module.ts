@@ -39,7 +39,14 @@ class AnalyticsService {
       this.db('projects').where({ is_active: true, is_deleted: false, project_status: 'Active' }).count<{ c: number }[]>({ c: '*' }).first(),
       this.db('daily_tasks').where({ is_deleted: false, task_date: today }).sum({ hours: 'hours_spent' }).count({ tasks: '*' }).first(),
       this.db('daily_tasks').where('is_deleted', false).andWhereBetween('task_date', [monthStart, monthEnd]).sum({ hours: 'hours_spent' }).count({ tasks: '*' }).first(),
-      this.db('daily_tasks').where({ is_deleted: false, submission_status: 'Pending' }).count<{ c: number }[]>({ c: '*' }).first(),
+      // Pending submissions = active employees (role_id 2) who logged NO task today.
+      this.db('employees')
+        .where({ 'employees.is_active': true, 'employees.is_deleted': false, 'employees.role_id': 2 })
+        .whereNotIn(
+          'employees.id',
+          this.db('daily_tasks').where({ is_deleted: false, task_date: today }).select('employee_id'),
+        )
+        .count<{ c: number }[]>({ c: '*' }).first(),
       this.db('daily_tasks')
         .leftJoin('activities', 'daily_tasks.activity_id', 'activities.id')
         .where('daily_tasks.is_deleted', false)
