@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Clock, Coffee, Trash2, Plus, Eye } from 'lucide-react';
+import { Clock, Coffee, Trash2, Plus, Eye, Pencil } from 'lucide-react';
 import { api } from '../lib/api';
 import type { DailyTask } from '../types';
 import DatePicker from './ui/DatePicker';
 import ConfirmDialog from './ConfirmDialog';
 import Modal from './Modal';
+import { Textarea } from './ui/Textarea';
+import { Skeleton } from './Skeleton';
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16', '#F97316', '#14B8A6'];
 
@@ -52,12 +54,6 @@ function fmtTime(min: number) {
   let h12 = h % 12; if (h12 === 0) h12 = 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
-function fmtHour(min: number) {
-  const h = Math.floor(min / 60) % 24;
-  const period = h >= 12 ? 'PM' : 'AM';
-  let h12 = h % 12; if (h12 === 0) h12 = 12;
-  return `${h12}${period}`;
-}
 function fmtHMS(hours: number) {
   const total = Math.round(hours * 3600);
   const h = Math.floor(total / 3600);
@@ -83,9 +79,10 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
   const [customFrom, setCustomFrom] = useState(monthStartStr());
   const [customTo, setCustomTo] = useState(todayStr());
   const [tasks, setTasks] = useState<DailyTask[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
+  const [editTask, setEditTask] = useState<DailyTask | null>(null);
   const navigate = useNavigate();
 
   const range = useMemo(
@@ -181,8 +178,8 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
         </div>
       </div>
 
-      {loading && tasks.length === 0 ? (
-        <div className="text-center text-sm text-slate-400 py-12">Loading…</div>
+      {loading ? (
+        <TrackerSkeleton />
       ) : tasks.length === 0 ? (
         <div className="text-center py-12">
           <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-50 dark:bg-white/[0.06] items-center justify-center mb-3">
@@ -194,8 +191,8 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
       ) : (
         <div className="space-y-6">
           {view === 'day'
-            ? <DayTimeline tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} />
-            : <DaySections tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} />}
+            ? <DayTimeline tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={employeeId ? undefined : setEditTask} />
+            : <DaySections tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={employeeId ? undefined : setEditTask} />}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
             <BreakdownList title="Hours by client" rows={byClient} />
             <BreakdownList title="Hours by activity" rows={byActivity} />
@@ -214,7 +211,66 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
       />
 
       <TaskDetailModal task={viewTask} onClose={() => setViewTask(null)} />
+
+      <EditTaskModal
+        task={editTask}
+        onClose={() => setEditTask(null)}
+        onSaved={() => { setEditTask(null); load(); }}
+      />
     </motion.div>
+  );
+}
+
+/* ---------------- Edit task (current-date description) ---------------- */
+
+function EditTaskModal({ task, onClose, onSaved }: {
+  task: DailyTask | null; onClose: () => void; onSaved: () => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [desc, setDesc] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (task) { setTitle(task.task_title || ''); setDesc(task.description || ''); }
+  }, [task]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!task) return;
+    setSaving(true);
+    try {
+      await api.put(`/daily-tasks/${task.id}`, { task_title: title, description: desc });
+      toast.success('Task updated');
+      onSaved();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message?.[0] || err.response?.data?.message || 'Failed to update');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={!!task} title="Edit task" onClose={onClose} size="lg">
+      {task && (
+        <form onSubmit={save} className="space-y-5">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {task.project_name || '—'} · {task.activity_name || '—'} · {task.task_date}
+          </div>
+          <div>
+            <label className="label">Task title</label>
+            <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" />
+          </div>
+          <div>
+            <label className="label">Description</label>
+            <Textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you work on?" />
+          </div>
+          <div className="flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -258,9 +314,39 @@ function DetailField({ label, value }: { label: string; value?: string | number 
   );
 }
 
+/* ---------------- Loading skeleton ---------------- */
+
+function TrackerSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* timeline bar + ticks */}
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-full rounded-full" />
+        <div className="flex justify-between">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-3 w-8" />)}
+        </div>
+      </div>
+      {/* task rows */}
+      <div className="space-y-4 pt-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-3.5 w-40" />
+              <Skeleton className="h-3 w-56" />
+            </div>
+            <Skeleton className="h-4 w-14 shrink-0" />
+            <Skeleton className="h-4 w-28 shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Day timeline ---------------- */
 
-function DayTimeline({ tasks, projectColors, onDelete, onView }: { tasks: DailyTask[]; projectColors: Record<string, string>; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void }) {
+function DayTimeline({ tasks, projectColors, onDelete, onView, onEdit }: { tasks: DailyTask[]; projectColors: Record<string, string>; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void; onEdit?: (t: DailyTask) => void }) {
   const timed = useMemo(() => (
     tasks
       .map((t) => ({ t, start: toMin(t.start_time), end: toMin(t.end_time) }))
@@ -268,15 +354,18 @@ function DayTimeline({ tasks, projectColors, onDelete, onView }: { tasks: DailyT
         x.start != null && x.end != null && x.end > x.start)
       .sort((a, b) => a.start - b.start)
   ), [tasks]);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   if (timed.length === 0) {
-    return <DayTable tasks={tasks} projectColors={projectColors} onDelete={onDelete} onView={onView} note="No start/end times set on these tasks." />;
+    return <DayTable tasks={tasks} projectColors={projectColors} onDelete={onDelete} onView={onView} onEdit={onEdit} note="No start/end times set on these tasks." />;
   }
 
   const minStart = Math.min(...timed.map((x) => x.start));
   const maxEnd = Math.max(...timed.map((x) => x.end));
-  const winStart = Math.floor(minStart / 60) * 60;
-  const winEnd = Math.ceil(maxEnd / 60) * 60;
+  // Window fits the actual first→last task exactly (no leading/trailing empty space,
+  // and no fixed 9AM anchor — every day/person starts wherever their work starts).
+  const winStart = minStart;
+  const winEnd = maxEnd;
   const span = Math.max(1, winEnd - winStart);
 
   // Break gaps between consecutive work blocks (from first task start onward)
@@ -288,10 +377,6 @@ function DayTimeline({ tasks, projectColors, onDelete, onView }: { tasks: DailyT
   }
   const breakMin = breaks.reduce((s, b) => s + (b.end - b.start), 0);
 
-  const ticks: number[] = [];
-  const step = span > 8 * 60 ? 180 : 120;
-  for (let m = winStart; m <= winEnd; m += step) ticks.push(m);
-
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
@@ -299,54 +384,75 @@ function DayTimeline({ tasks, projectColors, onDelete, onView }: { tasks: DailyT
         <span className="inline-flex items-center gap-1.5"><Coffee size={13} /> {fmtDur(breakMin)} break</span>
       </div>
 
-      {/* Timeline — rounded pills; breaks shown as gray gap segments */}
+      {/* Timeline — colored segments; hover shows a styled tooltip */}
       <div className="pt-1">
-        <div className="relative h-5 rounded-full bg-slate-100 dark:bg-white/[0.06]">
-          {breaks.map((bk, i) => {
-            const left = ((bk.start - winStart) / span) * 100;
-            const width = ((bk.end - bk.start) / span) * 100;
-            return (
-              <div
-                key={`bk-${i}`}
-                className="absolute top-0 bottom-0 rounded-full bg-slate-200 dark:bg-white/[0.12] flex items-center justify-center"
-                style={{ left: `${left}%`, width: `${width}%` }}
-                title={`Break · ${fmtDur(bk.end - bk.start)}`}
-              >
-                {width > 5 && <Coffee size={10} className="text-slate-400" />}
-              </div>
-            );
-          })}
-          {timed.map((b, i) => {
-            const left = ((b.start - winStart) / span) * 100;
-            const width = ((b.end - b.start) / span) * 100;
-            return (
-              <div
-                key={i}
-                className="absolute top-0 bottom-0 rounded-full"
-                style={{ left: `${left}%`, width: `${Math.max(width, 1.2)}%`, background: projectColors[b.t.project_name || '—'] }}
-                title={`${b.t.project_name || '—'} · ${b.t.activity_name || ''}\n${fmtTime(b.start)}–${fmtTime(b.end)} · ${b.t.task_title}`}
-              />
-            );
-          })}
-        </div>
-        <div className="relative h-4 mt-1.5">
-          {ticks.map((m) => {
-            const pct = ((m - winStart) / span) * 100;
-            const transform = pct <= 0.5 ? 'translateX(0)' : pct >= 99.5 ? 'translateX(-100%)' : 'translateX(-50%)';
-            return (
-              <span
-                key={m}
-                className="absolute text-[10px] text-slate-400 tabular-nums"
-                style={{ left: `${pct}%`, transform }}
-              >
-                {fmtHour(m)}
-              </span>
-            );
-          })}
+        <div className="relative">
+          <div className="relative h-5 rounded-full overflow-hidden bg-slate-100 dark:bg-white/[0.06]">
+            {breaks.map((bk, i) => {
+              const left = ((bk.start - winStart) / span) * 100;
+              const width = ((bk.end - bk.start) / span) * 100;
+              return (
+                <div
+                  key={`bk-${i}`}
+                  className="absolute top-0 bottom-0 bg-slate-200 dark:bg-white/[0.12] flex items-center justify-center"
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                >
+                  {width > 5 && <Coffee size={10} className="text-slate-400" />}
+                </div>
+              );
+            })}
+            {timed.map((b, i) => {
+              const left = ((b.start - winStart) / span) * 100;
+              const width = ((b.end - b.start) / span) * 100;
+              return (
+                <div
+                  key={i}
+                  className="absolute top-0 bottom-0 cursor-pointer transition-opacity hover:opacity-90"
+                  style={{ left: `${left}%`, width: `${Math.max(width, 1.2)}%`, background: projectColors[b.t.project_name || '—'] }}
+                  onMouseEnter={() => setHoverIdx(i)}
+                  onMouseLeave={() => setHoverIdx((cur) => (cur === i ? null : cur))}
+                />
+              );
+            })}
+          </div>
+
+          {/* Styled hover card */}
+          <AnimatePresence>
+            {hoverIdx != null && (() => {
+              const b = timed[hoverIdx];
+              const center = (((b.start + b.end) / 2 - winStart) / span) * 100;
+              const left = Math.min(Math.max(center, 9), 91);
+              return (
+                <motion.div
+                  key="tt"
+                  initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.96 }}
+                  transition={{ duration: 0.12 }}
+                  className="absolute bottom-full mb-2 z-50 -translate-x-1/2 pointer-events-none"
+                  style={{ left: `${left}%` }}
+                >
+                  <div className="rounded-xl bg-slate-900 dark:bg-slate-800 text-white shadow-xl ring-1 ring-black/10 px-3 py-2 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: projectColors[b.t.project_name || '—'] }} />
+                      <span className="font-semibold text-xs">{b.t.project_name || '—'}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-300">
+                      <Clock size={11} /> {fmtTime(b.start)} – {fmtTime(b.end)}
+                    </div>
+                    {b.t.activity_name && (
+                      <div className="mt-0.5 text-[11px] text-slate-400">{b.t.activity_name}</div>
+                    )}
+                  </div>
+                  <div className="h-2 w-2 rotate-45 bg-slate-900 dark:bg-slate-800 mx-auto -mt-1" />
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
         </div>
       </div>
 
-      <DayTable tasks={tasks} projectColors={projectColors} onDelete={onDelete} onView={onView} />
+      <DayTable tasks={tasks} projectColors={projectColors} onDelete={onDelete} onView={onView} onEdit={onEdit} />
     </div>
   );
 }
@@ -364,9 +470,10 @@ type Row =
   | { kind: 'task'; t: DailyTask; s: number | null; e: number | null }
   | { kind: 'break'; s: number; e: number };
 
-function DayTable({ tasks, projectColors, note, onDelete, onView }: {
-  tasks: DailyTask[]; projectColors: Record<string, string>; note?: string; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void;
+function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
+  tasks: DailyTask[]; projectColors: Record<string, string>; note?: string; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void; onEdit?: (t: DailyTask) => void;
 }) {
+  const today = todayStr();
   const timed = tasks
     .map((t) => ({ s: toMin(t.start_time), e: toMin(t.end_time) }))
     .filter((x): x is { s: number; e: number } => x.s != null && x.e != null && x.e > x.s)
@@ -458,10 +565,15 @@ function DayTable({ tasks, projectColors, note, onDelete, onView }: {
                   {s != null && e != null ? `${fmtTime(s)} – ${fmtTime(e)}` : '—'}
                 </td>
                 <td className="table-td text-right">
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-2.5">
                     {onView && (
                       <button onClick={() => onView(t)} className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors" title="View task details">
                         <Eye size={16} />
+                      </button>
+                    )}
+                    {onEdit && t.task_date === today && (
+                      <button onClick={() => onEdit(t)} className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors" title="Edit today's task">
+                        <Pencil size={14} />
                       </button>
                     )}
                     {onDelete && (
@@ -482,7 +594,7 @@ function DayTable({ tasks, projectColors, note, onDelete, onView }: {
 
 /* ---------------- Week / Month / Custom — per-day timesheet sections (scrollable) ---------------- */
 
-function DaySections({ tasks, projectColors, onDelete, onView }: { tasks: DailyTask[]; projectColors: Record<string, string>; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void }) {
+function DaySections({ tasks, projectColors, onDelete, onView, onEdit }: { tasks: DailyTask[]; projectColors: Record<string, string>; onDelete?: (id: number) => void; onView?: (t: DailyTask) => void; onEdit?: (t: DailyTask) => void }) {
   const days = useMemo(() => {
     const m: Record<string, DailyTask[]> = {};
     for (const t of tasks) {
@@ -508,7 +620,7 @@ function DaySections({ tasks, projectColors, onDelete, onView }: { tasks: DailyT
             </h3>
             <span className="text-sm tabular-nums font-semibold text-brand-600 dark:text-brand-400">{fmtHMS(total)} hrs</span>
           </div>
-          <DayTimeline tasks={dayTasks} projectColors={projectColors} onDelete={onDelete} onView={onView} />
+          <DayTimeline tasks={dayTasks} projectColors={projectColors} onDelete={onDelete} onView={onView} onEdit={onEdit} />
         </div>
       ))}
     </div>

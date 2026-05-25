@@ -3,14 +3,20 @@ import toast from 'react-hot-toast';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { Activity } from '../../types';
+import { TableSkeleton } from '../../components/Skeleton';
 
 export default function Activities() {
   const [items, setItems] = useState<Activity[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Activity | null>(null);
   const [name, setName] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const load = async () => setItems((await api.get('/activities')).data);
+  const load = async () => {
+    setLoading(true);
+    try { setItems((await api.get('/activities')).data); }
+    finally { setLoading(false); }
+  };
   useEffect(() => { load(); }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -38,7 +44,8 @@ export default function Activities() {
         <table className="w-full">
           <thead><tr><th className="table-th">Activity</th><th className="table-th"></th></tr></thead>
           <tbody>
-            {items.map((a) => (
+            {loading && <TableSkeleton rows={5} cols={2} />}
+            {!loading && items.map((a) => (
               <tr key={a.id}>
                 <td className="table-td font-medium">{a.activity_name}</td>
                 <td className="table-td text-right space-x-2">
@@ -47,7 +54,7 @@ export default function Activities() {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={2} className="table-td text-center text-slate-400">No activities.</td></tr>}
+            {!loading && items.length === 0 && <tr><td colSpan={2} className="table-td text-center text-slate-400">No activities.</td></tr>}
           </tbody>
         </table>
       </div>
