@@ -64,8 +64,8 @@ export class SchedulerService {
     }
   }
 
-  // ===== 6:20 PM — reminder for non-submitters =====
-  @Cron('0 20 18 * * *', { name: 'pending-submission-reminder', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
+  // ===== 6:45 PM — reminder for non-submitters =====
+  @Cron('0 45 18 * * *', { name: 'pending-submission-reminder', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async sendPendingReminders() {
     const date = new Date().toISOString().slice(0, 10);
     const submittedIds = await this.db('daily_tasks')

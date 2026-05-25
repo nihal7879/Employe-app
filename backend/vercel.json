@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/internal/cron/pending-reminder", "schedule": "50 12 * * *" },
+    { "path": "/internal/cron/pending-reminder", "schedule": "15 13 * * *" },
     { "path": "/internal/cron/daily-report", "schedule": "30 17 * * *" },
     { "path": "/internal/cron/weekly-summary", "schedule": "30 2 * * 1" },
     { "path": "/internal/cron/monthly-summary", "schedule": "30 2 1 * *" }
