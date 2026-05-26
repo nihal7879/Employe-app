@@ -15,9 +15,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    // Login is always light — never apply dark on the login route.
-    const onLogin = window.location.pathname.endsWith('/login');
-    if (theme === 'dark' && !onLogin) root.classList.add('dark');
+    // Login.tsx handles its own light-mode override via mount/unmount.
+    // Don't gate on the current path here — the effect only re-runs on theme change,
+    // so a path-based check goes stale after navigation and causes a two-click toggle bug.
+    if (theme === 'dark') root.classList.add('dark');
     else root.classList.remove('dark');
     localStorage.setItem('em_theme', theme);
   }, [theme]);

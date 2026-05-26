@@ -69,11 +69,13 @@ export default function Dashboard() {
   const teamGoal = Number(admin?.counts?.active_employees || 0) * 8;
   const teamPct = teamGoal > 0 ? Math.min(100, Math.round((teamHoursToday / teamGoal) * 100)) : 0;
 
-  // Project × activity segmented bars
+  // Project × activity segmented bars (excludes breaks + no-project entries)
   const projectSegments = useMemo(() => {
     const byProject: Record<string, { project_name: string; tasks: number; total_hours: number; perActivity: Record<string, number> }> = {};
     for (const t of monthTasks) {
-      const key = t.project_name || '—';
+      if (t.is_break) continue;
+      if (!t.project_name) continue;
+      const key = t.project_name;
       if (!byProject[key]) byProject[key] = { project_name: key, tasks: 0, total_hours: 0, perActivity: {} };
       byProject[key].tasks += 1;
       byProject[key].total_hours += Number(t.hours_spent || 0);
