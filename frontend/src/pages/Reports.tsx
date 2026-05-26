@@ -52,8 +52,8 @@ export default function Reports() {
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
 
-  // Day view state
-  const [dayEmployee, setDayEmployee] = useState('');
+  // Day view state — 'all' = aggregate across every employee (default)
+  const [dayEmployee, setDayEmployee] = useState('all');
 
   useEffect(() => {
     if (tab !== 'drilldown' && tab !== 'day-view') return;
@@ -61,7 +61,6 @@ export default function Reports() {
       api.get('/employees'), api.get('/clients'), api.get('/projects'), api.get('/activities'),
     ]).then(([e, c, p, a]) => {
       setEmployees(e.data); setClients(c.data); setProjects(p.data); setActivities(a.data);
-      if (tab === 'day-view' && !dayEmployee && e.data?.[0]) setDayEmployee(String(e.data[0].id));
     }).catch(() => {});
     // eslint-disable-next-line
   }, [tab]);
@@ -314,7 +313,7 @@ export default function Reports() {
                         {t.reference && <div className="text-xs text-slate-500">Ref: {t.reference}</div>}
                       </td>
                       <td className="table-td text-right tabular-nums font-semibold">{Number(t.hours_spent).toFixed(2)}</td>
-                      <td className="table-td whitespace-nowrap text-xs">{t.start_time || '—'} → {t.end_time || '—'}</td>
+                      <td className="table-td whitespace-nowrap text-xs">{fmtTime12(t.start_time)} → {fmtTime12(t.end_time)}</td>
                       <td className="table-td text-xs text-slate-500">{t.ip_address || '—'}</td>
                     </tr>
                   ))}
@@ -359,20 +358,19 @@ function EmployeeDayView({
           <label className="label">Employee</label>
           <Select
             value={employeeId}
-            options={employees.map((e) => ({ label: e.name, value: String(e.id) }))}
+            options={[
+              { label: 'All employees', value: 'all' },
+              ...employees.map((e) => ({ label: e.name, value: String(e.id) })),
+            ]}
             onChange={setEmployeeId}
             placeholder="Select employee"
+            searchable
+            searchPlaceholder="Type to search employee…"
           />
         </div>
       </div>
 
-      {employeeId ? (
-        <MyTimeTracker employeeId={employeeId} />
-      ) : (
-        <div className="card p-12 text-center text-sm text-slate-500 dark:text-slate-400">
-          Pick an employee to see their activity.
-        </div>
-      )}
+      <MyTimeTracker employeeId={employeeId === 'all' ? undefined : employeeId} adminView />
     </div>
   );
 }
@@ -422,7 +420,7 @@ function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: (
             <Field label="Assigned By" value={task.assigned_by} />
             <Field label="Reference" value={task.reference} />
             <Field label="Hours" value={Number(task.hours_spent).toFixed(2)} />
-            <Field label="Time" value={`${task.start_time || '—'} → ${task.end_time || '—'}`} />
+            <Field label="Time" value={`${fmtTime12(task.start_time)} → ${fmtTime12(task.end_time)}`} />
             <Field label="Submission" value={task.submission_status} />
             <Field label="Progress" value={task.progress_status} />
             <Field label="IP Address" value={task.ip_address} />
@@ -443,10 +441,11 @@ function Field({ label, value }: { label: string; value?: string | number | null
 }
 
 function DrilldownCharts({ tasks }: { tasks: DailyTask[] }) {
-  const byActivity = useMemo(() => groupHours(tasks, 'activity_name'), [tasks]);
-  const byProject  = useMemo(() => groupHours(tasks, 'project_name'),  [tasks]);
-  const byClient   = useMemo(() => groupHours(tasks, 'client_name'),   [tasks]);
-  const byEmployee = useMemo(() => groupHours(tasks, 'employee_name'), [tasks]);
+  const workTasks = useMemo(() => tasks.filter((t) => !t.is_break), [tasks]);
+  const byActivity = useMemo(() => groupHours(workTasks, 'activity_name'), [workTasks]);
+  const byProject  = useMemo(() => groupHours(workTasks, 'project_name'),  [workTasks]);
+  const byClient   = useMemo(() => groupHours(workTasks, 'client_name'),   [workTasks]);
+  const byEmployee = useMemo(() => groupHours(workTasks, 'employee_name'), [workTasks]);
 
   return (
     <div className="card p-5 md:p-6">
@@ -486,7 +485,9 @@ function ChartBlock({ title, data, color }: { title: string; data: { label: stri
 function groupHours(tasks: DailyTask[], field: keyof DailyTask) {
   const m: Record<string, { label: string; hours: number; count: number }> = {};
   for (const t of tasks) {
-    const label = (t as any)[field] || '—';
+    const raw = (t as any)[field];
+    if (!raw) continue; // skip rows with no label for this dimension
+    const label = String(raw);
     if (!m[label]) m[label] = { label, hours: 0, count: 0 };
     m[label].hours += Number(t.hours_spent || 0);
     m[label].count += 1;
@@ -505,9 +506,20 @@ function groupHoursByDate(tasks: DailyTask[]) {
   return Object.values(m).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function fmtTime12(t?: string) {
+  if (!t) return '—';
+  const m = t.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return t;
+  const h = Number(m[1]);
+  const min = m[2];
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${min} ${period}`;
+}
+
 function timeSlot(start?: string, end?: string) {
   if (!start && !end) return '';
-  return `${start || '—'} → ${end || '—'}`;
+  return `${fmtTime12(start)} → ${fmtTime12(end)}`;
 }
 
 function durationMinutes(start?: string, end?: string) {

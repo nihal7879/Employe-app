@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Search } from 'lucide-react';
 
 export interface SelectOption {
   label: string;
@@ -11,6 +11,7 @@ export interface SelectOption {
 
 export default function Select({
   value, options, onChange, placeholder = 'Select…', disabled = false, className = '',
+  searchable = false, searchPlaceholder = 'Search…',
 }: {
   value: string;
   options: SelectOption[];
@@ -18,25 +19,43 @@ export default function Select({
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) { setQuery(''); return; }
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('mousedown', onClick);
     window.addEventListener('keydown', onKey);
+    if (searchable) {
+      // Defer to let the dropdown mount before focusing the input.
+      const t = setTimeout(() => searchRef.current?.focus(), 30);
+      return () => {
+        clearTimeout(t);
+        window.removeEventListener('mousedown', onClick);
+        window.removeEventListener('keydown', onKey);
+      };
+    }
     return () => {
       window.removeEventListener('mousedown', onClick);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, searchable]);
 
   const selected = options.find((o) => o.value === value);
+  const visibleOptions = useMemo(() => {
+    if (!searchable || !query.trim()) return options;
+    const q = query.trim().toLowerCase();
+    return options.filter((o) => o.label.toLowerCase().includes(q));
+  }, [options, query, searchable]);
 
   return (
     <div ref={ref} className={`relative ${className}`}>
@@ -67,11 +86,28 @@ export default function Select({
             transition={{ duration: 0.15 }}
             className="absolute left-0 right-0 mt-2 z-[60] rounded-xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden"
           >
+            {searchable && (
+              <div className="p-2 border-b border-slate-100 dark:border-white/[0.06]">
+                <div className="relative">
+                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="w-full !pl-8 !pr-3 !py-1.5 rounded-lg text-sm bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+            )}
             <div className="max-h-72 overflow-y-auto py-1">
-              {options.length === 0 && (
-                <div className="px-3 py-6 text-center text-sm text-slate-400">No options</div>
+              {visibleOptions.length === 0 && (
+                <div className="px-3 py-6 text-center text-sm text-slate-400">
+                  {options.length === 0 ? 'No options' : 'No matches'}
+                </div>
               )}
-              {options.map((o) => {
+              {visibleOptions.map((o) => {
                 const active = o.value === value;
                 return (
                   <button

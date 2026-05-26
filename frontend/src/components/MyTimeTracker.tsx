@@ -6,6 +6,7 @@ import { Clock, Coffee, Trash2, Plus, Eye, Pencil } from 'lucide-react';
 import { api } from '../lib/api';
 import type { DailyTask } from '../types';
 import DatePicker from './ui/DatePicker';
+import TimePicker from './ui/TimePicker';
 import ConfirmDialog from './ConfirmDialog';
 import Modal from './Modal';
 import Select from './Select';
@@ -94,7 +95,7 @@ function groupHours(tasks: DailyTask[], field: keyof DailyTask, fallback: string
   return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
 }
 
-export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
+export default function MyTimeTracker({ employeeId, adminView = false }: { employeeId?: string; adminView?: boolean }) {
   const [view, setView] = useState<View>('day');
   const [date, setDate] = useState(todayStr());
   const [customFrom, setCustomFrom] = useState(monthStartStr());
@@ -146,6 +147,25 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
   const byClient = useMemo(() => groupHours(workTasks, 'client_name', '—'), [workTasks]);
   const byActivity = useMemo(() => groupHours(workTasks, 'activity_name', 'Other'), [workTasks]);
 
+  // Admin "All employees" mode: group tasks by employee so each person has their own block.
+  const groupAllByEmployee = adminView && !employeeId;
+  const employeeGroups = useMemo(() => {
+    if (!groupAllByEmployee) return [];
+    const m = new Map<number, { id: number; name: string; tasks: DailyTask[] }>();
+    for (const t of tasks) {
+      const id = t.employee_id;
+      if (!m.has(id)) m.set(id, { id, name: t.employee_name || 'Unknown', tasks: [] });
+      m.get(id)!.tasks.push(t);
+    }
+    return Array.from(m.values())
+      .map((g) => ({
+        ...g,
+        work: g.tasks.filter((t) => !t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0),
+        brk:  g.tasks.filter((t) =>  t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0),
+      }))
+      .sort((a, b) => b.work - a.work);
+  }, [tasks, groupAllByEmployee]);
+
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5 md:p-6 space-y-5">
       {/* Header + controls */}
@@ -196,7 +216,7 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
               <DatePicker value={date} onChange={setDate} clearable={false} />
             </div>
           )}
-          {!employeeId && (
+          {!adminView && !employeeId && (
             <button onClick={() => navigate('/tasks')} className="btn-primary shrink-0">
               <Plus size={15} /> Add task
             </button>
@@ -211,8 +231,42 @@ export default function MyTimeTracker({ employeeId }: { employeeId?: string }) {
           <div className="inline-flex h-14 w-14 rounded-2xl bg-slate-50 dark:bg-white/[0.06] items-center justify-center mb-3">
             <Clock size={24} className="text-slate-400" />
           </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">No tasks logged in this {view === 'range' ? 'range' : view}.</p>
-          {!employeeId && <a href="/tasks" className="btn-primary inline-flex">Log a task</a>}
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
+            {adminView
+              ? (employeeId ? 'This employee has no tasks logged in this ' : 'No tasks logged across the team in this ')
+              : 'No tasks logged in this '}
+            {view === 'range' ? 'range' : view}.
+          </p>
+          {!adminView && !employeeId && <a href="/tasks" className="btn-primary inline-flex">Log a task</a>}
+        </div>
+      ) : groupAllByEmployee ? (
+        <div className="space-y-5">
+          {employeeGroups.map((g) => {
+            const empWork = g.tasks.filter((t) => !t.is_break);
+            const empByClient = groupHours(empWork, 'client_name', '—');
+            const empByActivity = groupHours(empWork, 'activity_name', 'Other');
+            return (
+              <div key={g.id} className="rounded-2xl border border-slate-200 dark:border-white/10 p-4 space-y-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-slate-900 dark:text-white">{g.name}</h3>
+                  <span className="text-sm tabular-nums">
+                    <span className="font-semibold text-brand-600 dark:text-brand-400">{fmtHMS(g.work)} hrs</span>
+                    {g.brk > 0 && <span className="text-slate-400 ml-2">+ {fmtHMS(g.brk)} break</span>}
+                    <span className="text-slate-400 ml-2">· {g.tasks.length} task{g.tasks.length === 1 ? '' : 's'}</span>
+                  </span>
+                </div>
+                {view === 'day'
+                  ? <DayTimeline tasks={g.tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={undefined} />
+                  : <DaySections tasks={g.tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={undefined} />}
+                {empWork.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+                    <BreakdownList title="Hours by client" rows={empByClient} />
+                    <BreakdownList title="Hours by activity" rows={empByActivity} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-6">
@@ -255,23 +309,81 @@ function EditTaskModal({ task, onClose, onSaved }: {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [progress, setProgress] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [activityId, setActivityId] = useState('');
+  const [assignedBy, setAssignedBy] = useState('');
+  const [reference, setReference] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [clients, setClients] = useState<{ id: number; client_name: string }[]>([]);
+  const [projects, setProjects] = useState<{ id: number; client_id: number; project_name: string }[]>([]);
+  const [activities, setActivities] = useState<{ id: number; activity_name: string }[]>([]);
+
+  const trimSeconds = (t?: string) => (t ? t.slice(0, 5) : '');
+
   useEffect(() => {
-    if (task) {
-      setTitle(task.task_title || '');
-      setDesc(task.description || '');
-      setProgress(task.progress_status || '');
+    if (!task) return;
+    setTitle(task.task_title || '');
+    setDesc(task.description || '');
+    setProgress(task.progress_status || '');
+    setStartTime(trimSeconds(task.start_time));
+    setEndTime(trimSeconds(task.end_time));
+    setClientId(task.client_id ? String(task.client_id) : '');
+    setProjectId(task.project_id ? String(task.project_id) : '');
+    setActivityId(task.activity_id ? String(task.activity_id) : '');
+    setAssignedBy(task.assigned_by || '');
+    setReference(task.reference || '');
+    // Lazy-load lookup data on first open
+    if (clients.length === 0) {
+      Promise.all([api.get('/clients'), api.get('/projects'), api.get('/activities')])
+        .then(([c, p, a]) => { setClients(c.data); setProjects(p.data); setActivities(a.data); })
+        .catch(() => {});
     }
+    // eslint-disable-next-line
   }, [task]);
+
+  const filteredProjects = useMemo(
+    () => (clientId ? projects.filter((p) => p.client_id === Number(clientId)) : projects),
+    [projects, clientId],
+  );
+
+  const computedHours = useMemo(() => {
+    if (!startTime || !endTime) return null;
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins < 0) mins += 24 * 60;
+    return Math.round((mins / 60) * 100) / 100;
+  }, [startTime, endTime]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!task) return;
     if (!progress) { toast.error('Select a progress status'); return; }
+    if ((startTime && !endTime) || (!startTime && endTime)) {
+      toast.error('Set both start and end time'); return;
+    }
     setSaving(true);
     try {
-      await api.put(`/daily-tasks/${task.id}`, { task_title: title, description: desc, progress_status: progress });
+      const payload: Record<string, unknown> = {
+        task_title: title,
+        description: desc,
+        progress_status: progress,
+        assigned_by: assignedBy || undefined,
+        reference: reference || undefined,
+      };
+      if (clientId) payload.client_id = Number(clientId);
+      if (projectId) payload.project_id = Number(projectId);
+      if (activityId) payload.activity_id = Number(activityId);
+      if (startTime && endTime) {
+        payload.start_time = startTime;
+        payload.end_time = endTime;
+        if (computedHours != null) payload.hours_spent = computedHours;
+      }
+      await api.put(`/daily-tasks/${task.id}`, payload);
       toast.success('Task updated');
       onSaved();
     } catch (err: any) {
@@ -281,12 +393,59 @@ function EditTaskModal({ task, onClose, onSaved }: {
     }
   };
 
+  const clientOptions = clients.map((c) => ({ label: c.client_name, value: String(c.id) }));
+  const projectOptions = filteredProjects.map((p) => ({ label: p.project_name, value: String(p.id) }));
+  const activityOptions = activities.map((a) => ({ label: a.activity_name, value: String(a.id) }));
+
   return (
     <Modal open={!!task} title="Edit task" onClose={onClose} size="lg">
       {task && (
         <form onSubmit={save} className="space-y-5">
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            {task.project_name || '—'} · {task.activity_name || '—'} · {task.task_date}
+          <div className="text-xs text-slate-500 dark:text-slate-400">Date: {task.task_date}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="label">Client</label>
+              <Select value={clientId} options={clientOptions} placeholder="Select client" searchable searchPlaceholder="Search client…"
+                onChange={(v) => { setClientId(v); setProjectId(''); }} />
+            </div>
+            <div>
+              <label className="label">Project</label>
+              <Select value={projectId} options={projectOptions} placeholder="Select project" searchable searchPlaceholder="Search project…"
+                onChange={setProjectId} />
+            </div>
+            <div>
+              <label className="label">Activity</label>
+              <Select value={activityId} options={activityOptions} placeholder="Select activity" searchable searchPlaceholder="Search activity…"
+                onChange={setActivityId} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="label">Start Time</label>
+              <TimePicker value={startTime} onChange={setStartTime} placeholder="Start" />
+            </div>
+            <div>
+              <label className="label">End Time</label>
+              <TimePicker value={endTime} onChange={setEndTime} placeholder="End" />
+            </div>
+            <div>
+              <label className="label">Hours</label>
+              <div className="w-full flex items-center px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-sm">
+                <span className={`flex-1 tabular-nums font-semibold ${computedHours != null ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+                  {computedHours != null ? `${computedHours.toFixed(2)} h` : 'Auto'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Assigned By</label>
+              <input maxLength={255} value={assignedBy} onChange={(e) => setAssignedBy(e.target.value)} placeholder="Who assigned this?" />
+            </div>
+            <div>
+              <label className="label">Reference</label>
+              <input maxLength={255} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. ticket # or doc link" />
+            </div>
           </div>
           <div>
             <label className="label">Task title</label>
@@ -559,6 +718,7 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
             <th className="table-th">Activity</th>
             <th className="table-th text-right">Duration</th>
             <th className="table-th">Time</th>
+            <th className="table-th">Status</th>
             <th className="table-th"></th>
           </tr>
         </thead>
@@ -609,6 +769,7 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                   <td className="table-td whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                     {s != null && e != null ? `${fmtTime(s)} – ${fmtTime(e)}` : '—'}
                   </td>
+                  <td className="table-td text-sm text-slate-400">—</td>
                   <td className="table-td text-right">
                     <div className="flex items-center justify-end gap-2.5">
                       {onDelete && (
@@ -631,10 +792,7 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                       {initial}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="font-semibold text-slate-900 dark:text-white truncate">{t.project_name || '—'}</div>
-                        <ProgressBadge status={t.progress_status} />
-                      </div>
+                      <div className="font-semibold text-slate-900 dark:text-white truncate">{t.project_name || '—'}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         {t.client_name || '—'}{t.task_title ? ` · ${t.task_title}` : ''}
                       </div>
@@ -654,6 +812,9 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                 <td className="table-td text-right tabular-nums font-semibold text-cyan-600 dark:text-cyan-400">{dur}</td>
                 <td className="table-td whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
                   {s != null && e != null ? `${fmtTime(s)} – ${fmtTime(e)}` : '—'}
+                </td>
+                <td className="table-td">
+                  <ProgressBadge status={t.progress_status} />
                 </td>
                 <td className="table-td text-right">
                   <div className="flex items-center justify-end gap-2.5">

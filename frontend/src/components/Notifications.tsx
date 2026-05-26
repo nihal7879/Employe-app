@@ -118,12 +118,10 @@ export default function Notifications() {
                 <div className="font-semibold text-slate-900 dark:text-white">Notifications</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">Recent email activity</div>
               </div>
-              {isAdmin && (
-                <button
-                  onClick={() => { setOpen(false); nav('/admin/email-logs'); }}
-                  className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700"
-                >View all</button>
-              )}
+              <button
+                onClick={() => { setOpen(false); nav(isAdmin ? '/admin/email-logs' : '/notifications'); }}
+                className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700"
+              >View all</button>
             </div>
 
             <div className="max-h-96 overflow-y-auto">
