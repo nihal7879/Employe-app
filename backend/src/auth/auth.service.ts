@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
+import type { RequestContext } from '../common/utils/request-context';
 
 @Injectable()
 export class AuthService {
@@ -27,7 +28,7 @@ export class AuthService {
     return { email: payload.email, name: payload.name || payload.email, picture: payload.picture };
   }
 
-  async loginWithGoogle(profile: { email: string; name: string; picture?: string }) {
+  async loginWithGoogle(profile: { email: string; name: string; picture?: string }, ctx?: RequestContext) {
     if (!profile?.email) throw new UnauthorizedException('Google profile missing email');
 
     const employee = await this.db('employees')
@@ -56,6 +57,8 @@ export class AuthService {
       },
     );
 
+    await this.recordAudit(employee.id, employee.email, 'Login', ctx);
+
     return {
       access_token: token,
       user: {
@@ -65,5 +68,35 @@ export class AuthService {
         role: employee.role,
       },
     };
+  }
+
+  async recordAudit(
+    employee_id: number | null,
+    employee_email: string | null,
+    event_type: 'Login' | 'Logout',
+    ctx?: RequestContext,
+  ) {
+    try {
+      await this.db('audit_logs').insert({
+        employee_id,
+        employee_email,
+        event_type,
+        ip: ctx?.ip || null,
+        gps: ctx?.gps || null,
+        device: ctx?.device || null,
+        browser: ctx?.browser || null,
+        user_agent: ctx?.user_agent || null,
+      });
+    } catch {
+      // Audit failures must never break login/logout
+    }
+  }
+
+  decodeToken(token: string): { sub: number; email: string } | null {
+    try {
+      return this.jwt.verify(token, { secret: this.config.get<string>('JWT_SECRET', 'change-me') });
+    } catch {
+      return null;
+    }
   }
 }

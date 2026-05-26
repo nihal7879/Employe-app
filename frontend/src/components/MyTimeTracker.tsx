@@ -128,6 +128,7 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
       toast.success('Task deleted');
       load();
     } catch (e: any) {
+      if (e?.reason || e?.isNetworkError) return; // interceptor already showed the toast
       toast.error(e.response?.data?.message || 'Failed to delete');
     }
   };
@@ -387,6 +388,7 @@ function EditTaskModal({ task, onClose, onSaved }: {
       toast.success('Task updated');
       onSaved();
     } catch (err: any) {
+      if (err?.reason || err?.isNetworkError) return; // interceptor already showed the toast
       toast.error(err.response?.data?.message?.[0] || err.response?.data?.message || 'Failed to update');
     } finally {
       setSaving(false);

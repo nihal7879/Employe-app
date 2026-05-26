@@ -93,6 +93,7 @@ export default function Tasks() {
       toast.success('Task logged');
       setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '', progress_status: '' });
     } catch (e: any) {
+      if (e?.reason || e?.isNetworkError) return; // interceptor already showed the toast
       toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
     }
   };
