@@ -423,7 +423,8 @@ function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: (
             <Field label="Reference" value={task.reference} />
             <Field label="Hours" value={Number(task.hours_spent).toFixed(2)} />
             <Field label="Time" value={`${task.start_time || '—'} → ${task.end_time || '—'}`} />
-            <Field label="Status" value={task.submission_status} />
+            <Field label="Submission" value={task.submission_status} />
+            <Field label="Progress" value={task.progress_status} />
             <Field label="IP Address" value={task.ip_address} />
           </div>
         </div>
@@ -540,6 +541,7 @@ function tasksToCsvRows(tasks: DailyTask[]) {
     'Duration':        durationMinutes(t.start_time, t.end_time),
     'Hours Logged':    Number(t.hours_spent).toFixed(2),
     'Status':          t.submission_status,
+    'Progress':        t.progress_status || '',
     'Remarks':         t.remarks || '',
     'IP Address':      t.ip_address || '',
     'Submitted At':    t.created_at || '',

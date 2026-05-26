@@ -1,4 +1,7 @@
-import { IsDateString, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+
+export const PROGRESS_STATUSES = ['Completed', 'In Progress', 'Pending'] as const;
+export type ProgressStatus = (typeof PROGRESS_STATUSES)[number];
 
 export class CreateDailyTaskDto {
   @IsInt() client_id: number;
@@ -14,6 +17,7 @@ export class CreateDailyTaskDto {
   @IsOptional() @IsString() end_time?: string;
   @IsOptional() @IsString() remarks?: string;
   @IsOptional() @IsString() submission_status?: string;
+  @IsIn(PROGRESS_STATUSES as unknown as string[]) progress_status: ProgressStatus;
 }
 
 export class UpdateDailyTaskDto {
@@ -30,6 +34,7 @@ export class UpdateDailyTaskDto {
   @IsOptional() @IsString() end_time?: string;
   @IsOptional() @IsString() remarks?: string;
   @IsOptional() @IsString() submission_status?: string;
+  @IsOptional() @IsIn(PROGRESS_STATUSES as unknown as string[]) progress_status?: ProgressStatus;
 }
 
 export class ListDailyTasksDto {
@@ -40,4 +45,5 @@ export class ListDailyTasksDto {
   @IsOptional() @IsDateString() from?: string;
   @IsOptional() @IsDateString() to?: string;
   @IsOptional() @IsString() submission_status?: string;
+  @IsOptional() @IsIn(PROGRESS_STATUSES as unknown as string[]) progress_status?: ProgressStatus;
 }

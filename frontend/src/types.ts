@@ -75,6 +75,8 @@ export interface DailyTask {
   start_time?: string;
   end_time?: string;
   submission_status: 'Submitted' | 'Pending';
+  progress_status?: 'Completed' | 'In Progress' | 'Pending';
+  is_break?: boolean | number;
   remarks?: string;
   ip_address?: string;
   created_at?: string;

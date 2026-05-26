@@ -13,13 +13,34 @@ const accents = {
   pink:  'bg-pink-50 text-pink-600 dark:bg-pink-500/15 dark:text-pink-300',
 } as const;
 
-const bars = {
-  brand: 'from-brand-500/0 via-brand-500/70 to-brand-500/0',
-  cyan:  'from-cyan-500/0 via-cyan-500/70 to-cyan-500/0',
-  ok:    'from-emerald-500/0 via-emerald-500/70 to-emerald-500/0',
-  warn:  'from-amber-500/0 via-amber-500/70 to-amber-500/0',
-  bad:   'from-rose-500/0 via-rose-500/70 to-rose-500/0',
-  pink:  'from-pink-500/0 via-pink-500/70 to-pink-500/0',
+// Subtle colored left accent per card.
+const accentBorder = {
+  brand: 'border-l-[3px] border-l-brand-500',
+  cyan:  'border-l-[3px] border-l-cyan-500',
+  ok:    'border-l-[3px] border-l-emerald-500',
+  warn:  'border-l-[3px] border-l-amber-500',
+  bad:   'border-l-[3px] border-l-rose-500',
+  pink:  'border-l-[3px] border-l-pink-500',
+} as const;
+
+// Soft flat color tint per card — not white, no gradient.
+const cardBg = {
+  brand: 'bg-brand-50/70 dark:bg-brand-500/[0.08]',
+  cyan:  'bg-cyan-50/70 dark:bg-cyan-500/[0.08]',
+  ok:    'bg-emerald-50/70 dark:bg-emerald-500/[0.08]',
+  warn:  'bg-amber-50/70 dark:bg-amber-500/[0.08]',
+  bad:   'bg-rose-50/70 dark:bg-rose-500/[0.08]',
+  pink:  'bg-pink-50/70 dark:bg-pink-500/[0.08]',
+} as const;
+
+// Colored number text per card.
+const accentText = {
+  brand: 'text-brand-700 dark:text-brand-300',
+  cyan:  'text-cyan-700 dark:text-cyan-300',
+  ok:    'text-emerald-700 dark:text-emerald-300',
+  warn:  'text-amber-700 dark:text-amber-300',
+  bad:   'text-rose-700 dark:text-rose-300',
+  pink:  'text-pink-700 dark:text-pink-300',
 } as const;
 
 type Accent = keyof typeof accents;
@@ -50,7 +71,7 @@ export default function StatCard({
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
       transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-      className={`card card-hover relative overflow-hidden group ${clickable ? 'cursor-pointer focus:outline-none focus:ring-4 focus:ring-brand-500/20' : ''}`}
+      className={`card card-hover relative overflow-hidden group ${cardBg[accent]} ${accentBorder[accent]} ${clickable ? 'cursor-pointer focus:outline-none focus:ring-4 focus:ring-brand-500/20' : ''}`}
     >
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">
@@ -66,7 +87,7 @@ export default function StatCard({
         </div>
 
         <div className="mt-5">
-          <div className="text-[28px] leading-none font-bold tracking-tight text-slate-900 dark:text-white">
+          <div className={`text-[28px] leading-none font-bold tracking-tight ${accentText[accent]}`}>
             <AnimatedNumber value={value} format={format} />
           </div>
           <div className="mt-2 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">{label}</div>
@@ -79,9 +100,6 @@ export default function StatCard({
           </div>
         )}
       </div>
-
-      {/* thin gradient accent bar at the bottom */}
-      <div className={`h-[3px] bg-gradient-to-r ${bars[accent]}`} />
     </motion.div>
   );
 }
