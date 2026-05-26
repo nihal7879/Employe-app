@@ -51,12 +51,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStoredUser(JSON.stringify(data.user));
     setUser(data.user);
 
-    // Background: as soon as coords land in cache, send them to the backend
-    // so the just-created Login audit row is updated. Never blocks the UI —
-    // login is already done by this point.
-    requestGps()
-      .then((gps) => { if (gps) return api.patch('/audit/login/backfill-gps', { gps }); })
-      .catch(() => null);
+    // Background: as soon as coords land in cache, patch the just-created
+    // Login audit row. Doesn't block the UI; runs twice as a safety net so a
+    // dropped first PATCH never leaves the login row with gps = NULL.
+    const backfill = async () => {
+      const gps = await requestGps().catch(() => null);
+      if (!gps) return;
+      try { await api.patch('/audit/login/backfill-gps', { gps }); } catch { /* ignore */ }
+    };
+    backfill();
+    setTimeout(backfill, 2500);
   };
 
   const logout = async () => {

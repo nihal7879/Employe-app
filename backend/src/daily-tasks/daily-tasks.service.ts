@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import type { RequestContext } from '../common/utils/request-context';
@@ -50,6 +50,21 @@ export class DailyTasksService {
   }
 
   async create(employee_id: number, ctx: RequestContext, dto: CreateDailyTaskDto) {
+    // Reject if another non-deleted task for this employee on the same date
+    // overlaps the new [start_time, end_time) window. Two ranges overlap when
+    // existing.start_time < new.end_time AND existing.end_time > new.start_time.
+    if (dto.start_time && dto.end_time) {
+      const clash = await this.db('daily_tasks')
+        .where({ employee_id, task_date: dto.task_date, is_deleted: false })
+        .andWhere('start_time', '<', dto.end_time)
+        .andWhere('end_time', '>', dto.start_time)
+        .first('id', 'start_time', 'end_time', 'task_title');
+      if (clash) {
+        throw new ConflictException(
+          `This time slot overlaps an existing task (${clash.start_time}–${clash.end_time}: "${clash.task_title}"). Pick a different time.`,
+        );
+      }
+    }
     const payload = {
       employee_id,
       ip_address: ctx.ip,

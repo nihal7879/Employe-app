@@ -22,6 +22,7 @@ export default function Tasks() {
     task_date: todayStr(), start_time: '', end_time: '',
     progress_status: '',
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const progressStatusOptions = [
     { label: 'Completed', value: 'Completed' },
@@ -63,6 +64,7 @@ export default function Tasks() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // prevent double-submit while in-flight
     if (!form.client_id || !form.project_id || !form.activity_id) {
       toast.error('Select client, project and activity'); return;
     }
@@ -75,6 +77,7 @@ export default function Tasks() {
     if (!form.progress_status) {
       toast.error('Select a progress status'); return;
     }
+    setSubmitting(true);
     try {
       await api.post('/daily-tasks', {
         client_id: Number(form.client_id),
@@ -93,8 +96,10 @@ export default function Tasks() {
       toast.success('Task logged');
       setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '', progress_status: '' });
     } catch (e: any) {
-      if (e?.reason || e?.isNetworkError) return; // interceptor already showed the toast
+      if (e?.reason || e?.isNetworkError) { setSubmitting(false); return; }
       toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -185,7 +190,7 @@ export default function Tasks() {
               value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
           <div className="md:col-span-3 lg:col-span-4 flex justify-end gap-2">
-            <button type="submit" className="btn-primary">Log Task</button>
+            <button type="submit" className="btn-primary" disabled={submitting}>{submitting ? 'Logging…' : 'Log Task'}</button>
           </div>
         </form>
       </motion.div>

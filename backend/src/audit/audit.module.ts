@@ -42,22 +42,25 @@ class AuditService {
   // (and refreshed ip/device/browser). Used by the frontend to back-fill the
   // login audit row once the browser finally returns coordinates, which often
   // happens a few hundred ms AFTER the login request itself.
+  //
+  // Both freshness ("within last 10 minutes") and "still empty" guards are
+  // evaluated in SQL — that keeps the comparison timezone-safe regardless of
+  // how knex returns the timestamp to JS.
   async backfillLastLoginGps(employee_id: number, gps: string, ctx: { ip?: string; device?: string | null; browser?: string | null }) {
     const row = await this.db('audit_logs')
       .where({ employee_id, event_type: 'Login' })
+      .whereNull('gps')
+      .whereRaw('created_at >= NOW() - INTERVAL 10 MINUTE')
       .orderBy('created_at', 'desc')
-      .first('id', 'created_at', 'gps');
+      .first('id');
+    // eslint-disable-next-line no-console
+    console.log(`[audit] backfillLastLoginGps emp=${employee_id} gps=${gps} match=${row?.id || 'none'}`);
     if (!row) return { updated: 0 };
-    // Only backfill rows from the last 10 minutes that don't already have GPS,
-    // so a late call can't overwrite an older login's coordinates.
-    const ageMs = Date.now() - new Date(row.created_at).getTime();
-    if (row.gps || ageMs > 10 * 60 * 1000) return { updated: 0 };
-    await this.db('audit_logs').where({ id: row.id }).update({
-      gps,
-      ip: ctx.ip || undefined,
-      device: ctx.device || undefined,
-      browser: ctx.browser || undefined,
-    });
+    const update: Record<string, unknown> = { gps };
+    if (ctx.ip) update.ip = ctx.ip;
+    if (ctx.device) update.device = ctx.device;
+    if (ctx.browser) update.browser = ctx.browser;
+    await this.db('audit_logs').where({ id: row.id }).update(update);
     return { updated: 1, id: row.id };
   }
 
