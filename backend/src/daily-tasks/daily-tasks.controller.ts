@@ -3,7 +3,7 @@ import type { Request } from 'express';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { getClientIp } from '../common/utils/get-ip';
+import { getRequestContext } from '../common/utils/request-context';
 import { CreateDailyTaskDto, ListDailyTasksDto, UpdateDailyTaskDto } from './dto/daily-task.dto';
 import { DailyTasksService } from './daily-tasks.service';
 
@@ -36,23 +36,28 @@ export class DailyTasksController {
     @Req() req: Request,
     @Body() dto: CreateDailyTaskDto,
   ) {
-    return this.service.create(user.id, getClientIp(req), dto);
+    return this.service.create(user.id, getRequestContext(req), dto);
   }
 
   @Put(':id')
   @Roles('Employee')
   update(
     @CurrentUser() user: AuthUser,
+    @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateDailyTaskDto,
   ) {
-    return this.service.update(id, user, dto);
+    return this.service.update(id, user, dto, getRequestContext(req));
   }
 
   @Delete(':id')
   @Roles('Employee')
-  remove(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id, user);
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.remove(id, user, getRequestContext(req));
   }
 
   // Admin: pending submission report

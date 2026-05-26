@@ -1,6 +1,7 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
+import type { RequestContext } from '../common/utils/request-context';
 import { CreateDailyTaskDto, ListDailyTasksDto, UpdateDailyTaskDto } from './dto/daily-task.dto';
 
 @Injectable()
@@ -48,32 +49,48 @@ export class DailyTasksService {
     return row;
   }
 
-  async create(employee_id: number, ip: string, dto: CreateDailyTaskDto) {
+  async create(employee_id: number, ctx: RequestContext, dto: CreateDailyTaskDto) {
     const payload = {
       employee_id,
-      ip_address: ip,
+      ip_address: ctx.ip,
       submission_status: dto.submission_status || 'Submitted',
       ...dto,
+      created_ip: ctx.ip,
+      created_gps: ctx.gps,
+      created_device: ctx.device,
+      created_browser: ctx.browser,
     };
     const [id] = await this.db('daily_tasks').insert(payload);
     return this.findOne(id);
   }
 
-  async update(id: number, user: { id: number; role: string }, dto: UpdateDailyTaskDto) {
+  async update(id: number, user: { id: number; role: string }, dto: UpdateDailyTaskDto, ctx?: RequestContext) {
     const existing = await this.findOne(id);
     if (user.role !== 'Admin' && existing.employee_id !== user.id) {
       throw new ForbiddenException('Cannot edit another employee\'s task');
     }
-    await this.db('daily_tasks').where({ id }).update(dto);
+    const auditFields = ctx ? {
+      updated_ip: ctx.ip,
+      updated_gps: ctx.gps,
+      updated_device: ctx.device,
+      updated_browser: ctx.browser,
+    } : {};
+    await this.db('daily_tasks').where({ id }).update({ ...dto, ...auditFields });
     return this.findOne(id);
   }
 
-  async remove(id: number, user: { id: number; role: string }) {
+  async remove(id: number, user: { id: number; role: string }, ctx?: RequestContext) {
     const existing = await this.findOne(id);
     if (user.role !== 'Admin' && existing.employee_id !== user.id) {
       throw new ForbiddenException('Cannot delete another employee\'s task');
     }
-    await this.db('daily_tasks').where({ id }).update({ is_deleted: true, is_active: false });
+    const auditFields = ctx ? {
+      updated_ip: ctx.ip,
+      updated_gps: ctx.gps,
+      updated_device: ctx.device,
+      updated_browser: ctx.browser,
+    } : {};
+    await this.db('daily_tasks').where({ id }).update({ is_deleted: true, is_active: false, ...auditFields });
     return { success: true };
   }
 

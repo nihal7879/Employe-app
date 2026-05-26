@@ -194,6 +194,11 @@ export default function Login() {
                   toast.success('Signed in');
                   nav('/', { replace: true });
                 } catch (e: any) {
+                  if (e?.isNetworkError) return;       // server unreachable — interceptor toast
+                  if (e?.reason) {                      // GpsError — user picked Never allow
+                    toast.error(e.message, { duration: 8000 });
+                    return;
+                  }
                   toast.error(e.response?.data?.message || 'Sign-in failed');
                 }
               }}

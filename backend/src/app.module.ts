@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ActivitiesModule } from './activities/activities.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -36,6 +37,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     DailyTasksModule,
     ReportsModule,
     AnalyticsModule,
+    AuditModule,
     SchedulerModule,
   ],
   controllers: [HealthController],

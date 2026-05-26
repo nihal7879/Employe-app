@@ -16,6 +16,7 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-GPS-Location'],
   });
 
   app.useGlobalPipes(
