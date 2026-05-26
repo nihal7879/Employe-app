@@ -21,10 +21,10 @@ body {
   background-color: #0B1020;
 }
 
-.app-sidebar      { background: #FFFFFF; }
-.dark .app-sidebar { background: #0F1428; }
+.app-sidebar      { background: #F1F0FB; }
+.dark .app-sidebar { background: #12152E; }
 
-.app-main         { background: #F4F5F8; scrollbar-gutter: stable; }
+.app-main         { background: #F3F2FB; scrollbar-gutter: stable; }
 .dark .app-main   { background: #0B1020; }
 
 /* scrollbar */

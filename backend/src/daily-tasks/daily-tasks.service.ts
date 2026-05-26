@@ -36,6 +36,7 @@ export class DailyTasksService {
     if (q.project_id) qb = qb.where('daily_tasks.project_id', q.project_id);
     if (q.activity_id) qb = qb.where('daily_tasks.activity_id', q.activity_id);
     if (q.submission_status) qb = qb.where('daily_tasks.submission_status', q.submission_status);
+    if (q.progress_status) qb = qb.where('daily_tasks.progress_status', q.progress_status);
     if (q.from) qb = qb.where('daily_tasks.task_date', '>=', q.from);
     if (q.to) qb = qb.where('daily_tasks.task_date', '<=', q.to);
     return qb.orderBy('daily_tasks.task_date', 'desc').orderBy('daily_tasks.created_at', 'desc');

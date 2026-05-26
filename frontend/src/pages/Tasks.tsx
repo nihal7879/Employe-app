@@ -20,7 +20,14 @@ export default function Tasks() {
     hours_spent: '', task_title: '', description: '',
     assigned_by: '', reference: '',
     task_date: todayStr(), start_time: '', end_time: '',
+    progress_status: '',
   });
+
+  const progressStatusOptions = [
+    { label: 'Completed', value: 'Completed' },
+    { label: 'In Progress', value: 'In Progress' },
+    { label: 'Pending', value: 'Pending' },
+  ];
 
   const filteredProjects = useMemo(
     () => (form.client_id ? projects.filter((p) => p.client_id === Number(form.client_id)) : projects),
@@ -65,6 +72,9 @@ export default function Tasks() {
     if (!form.task_title.trim()) {
       toast.error('Enter a task title'); return;
     }
+    if (!form.progress_status) {
+      toast.error('Select a progress status'); return;
+    }
     try {
       await api.post('/daily-tasks', {
         client_id: Number(form.client_id),
@@ -78,9 +88,10 @@ export default function Tasks() {
         task_date: todayStr(),
         start_time: form.start_time || undefined,
         end_time: form.end_time || undefined,
+        progress_status: form.progress_status,
       });
       toast.success('Task logged');
-      setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '' });
+      setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '', progress_status: '' });
     } catch (e: any) {
       toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
     }
@@ -152,7 +163,12 @@ export default function Tasks() {
             <input maxLength={255} placeholder="Who assigned this?"
               value={form.assigned_by} onChange={(e) => setForm({ ...form, assigned_by: e.target.value })} />
           </div>
-          <div className="md:col-span-2 lg:col-span-3">
+          <div>
+            <label className="label">Progress Status</label>
+            <Select value={form.progress_status} options={progressStatusOptions} placeholder="Select status"
+              onChange={(v) => setForm({ ...form, progress_status: v })} />
+          </div>
+          <div className="md:col-span-2 lg:col-span-2">
             <label className="label">Reference</label>
             <input maxLength={255} placeholder="e.g. email from client, ticket #, doc link"
               value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} />

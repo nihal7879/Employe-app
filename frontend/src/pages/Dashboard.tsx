@@ -306,11 +306,11 @@ export default function Dashboard() {
                   <div className="flex flex-wrap gap-2">
                     {acts.slice(0, 4).map((a, i) => (
                       <span
-                        key={a.activity_name}
+                        key={a.activity_name || 'Other'}
                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-700 dark:text-slate-200"
                       >
                         <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                        {a.activity_name}
+                        {a.activity_name || 'Other'}
                       </span>
                     ))}
                   </div>
@@ -331,10 +331,10 @@ export default function Dashboard() {
                         const widthPct = max ? (a.total_hours / max) * 100 : 0;
                         const color = COLORS[i % COLORS.length];
                         return (
-                          <div key={a.activity_name} className="flex items-center gap-4">
+                          <div key={a.activity_name || 'Other'} className="flex items-center gap-4">
                             <div className="flex items-center gap-2 w-40 shrink-0">
                               <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
-                              <span className="text-sm font-medium text-slate-900 dark:text-white truncate">{a.activity_name}</span>
+                              <span className="text-sm font-medium text-slate-900 dark:text-white truncate">{a.activity_name || 'Other'}</span>
                             </div>
                             <div className="flex-1 h-3 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
                               <motion.div
