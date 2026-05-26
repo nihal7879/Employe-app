@@ -1,8 +1,11 @@
-import { Controller, Get, Inject, Injectable, Module, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Injectable, Module, Patch, Query, Req, UseGuards } from '@nestjs/common';
 import { Knex } from 'knex';
+import type { Request } from 'express';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { getRequestContext } from '../common/utils/request-context';
 
 @Injectable()
 class AuditService {
@@ -35,6 +38,29 @@ class AuditService {
     return q.limit(limit);
   }
 
+  // Patch the most recent Login row for this employee with the supplied GPS
+  // (and refreshed ip/device/browser). Used by the frontend to back-fill the
+  // login audit row once the browser finally returns coordinates, which often
+  // happens a few hundred ms AFTER the login request itself.
+  async backfillLastLoginGps(employee_id: number, gps: string, ctx: { ip?: string; device?: string | null; browser?: string | null }) {
+    const row = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Login' })
+      .orderBy('created_at', 'desc')
+      .first('id', 'created_at', 'gps');
+    if (!row) return { updated: 0 };
+    // Only backfill rows from the last 10 minutes that don't already have GPS,
+    // so a late call can't overwrite an older login's coordinates.
+    const ageMs = Date.now() - new Date(row.created_at).getTime();
+    if (row.gps || ageMs > 10 * 60 * 1000) return { updated: 0 };
+    await this.db('audit_logs').where({ id: row.id }).update({
+      gps,
+      ip: ctx.ip || undefined,
+      device: ctx.device || undefined,
+      browser: ctx.browser || undefined,
+    });
+    return { updated: 1, id: row.id };
+  }
+
   // Login count per employee — useful for admin dashboard
   async loginCounts(params: { from?: string; to?: string }) {
     let q = this.db('audit_logs')
@@ -57,18 +83,32 @@ class AuditService {
 
 @Controller('audit')
 @UseGuards(RolesGuard)
-@Roles('Admin')
 class AuditController {
   constructor(private readonly s: AuditService) {}
 
   @Get('logs')
+  @Roles('Admin')
   list(@Query() q: { employee_id?: string; event_type?: string; from?: string; to?: string; limit?: string }) {
     return this.s.list(q);
   }
 
   @Get('login-counts')
+  @Roles('Admin')
   counts(@Query() q: { from?: string; to?: string }) {
     return this.s.loginCounts(q);
+  }
+
+  // Open to any authenticated user — they can only backfill their OWN last
+  // Login row (employee_id is taken from the JWT, never the body).
+  @Patch('login/backfill-gps')
+  backfill(
+    @CurrentUser() user: AuthUser,
+    @Req() req: Request,
+    @Body() body: { gps: string },
+  ) {
+    if (!body?.gps) return { updated: 0 };
+    const ctx = getRequestContext(req);
+    return this.s.backfillLastLoginGps(user.id, String(body.gps), { ip: ctx.ip, device: ctx.device, browser: ctx.browser });
   }
 }
 

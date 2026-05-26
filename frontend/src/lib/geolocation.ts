@@ -62,11 +62,16 @@ export async function assertGpsNotDenied(): Promise<void> {
   }
 }
 
-// Trigger the browser's location prompt and resolve as soon as the user picks
-// Allow (resolves) or Never allow (rejects). Does NOT wait for the actual
-// coordinates — those continue acquiring in the background and are written to
-// the GPS cache when ready. This keeps login fast while still gating on the
-// user's choice.
+// Trigger the browser's location prompt. Resolves the instant the user picks
+// Allow — does NOT wait for the actual coordinates. Coords keep loading in the
+// background and land in the cache when ready; subsequent API requests pick
+// them up via the X-GPS-Location header. Rejects only if the user picks
+// Never allow.
+//
+// Trade-off accepted: the very first audit row after a fresh "Allow" may have
+// gps = NULL if coords haven't landed yet. Every subsequent row gets GPS. The
+// alternative (waiting for coords) adds a perceptible delay to login that the
+// user has explicitly asked us to avoid.
 export function requireLocationGrant(): Promise<void> {
   return new Promise<void>(async (resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -81,7 +86,6 @@ export function requireLocationGrant(): Promise<void> {
     }
 
     if (status?.state === 'granted') {
-      // Already allowed — fire background fetch and resolve instantly.
       requestGps().catch(() => null);
       return resolve();
     }
@@ -90,15 +94,13 @@ export function requireLocationGrant(): Promise<void> {
       return reject(new GpsError('denied', DENIED_MESSAGE));
     }
 
-    // state === 'prompt' (or Permissions API unavailable) — show the dialog.
-    // Resolve/reject as soon as the user picks; coords keep loading in the
-    // background and land in the cache via the getCurrentPosition callback.
+    // state === 'prompt' (or Permissions API unavailable) — fire the prompt
+    // and resolve as soon as the user picks Allow / reject on Never allow.
     let settled = false;
     const settle = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
 
     if (status) {
       status.onchange = () => {
-        if (settled) return;
         if (status!.state === 'granted') settle(() => resolve());
         else if (status!.state === 'denied') {
           clearGpsCache();
@@ -118,9 +120,6 @@ export function requireLocationGrant(): Promise<void> {
           clearGpsCache();
           settle(() => reject(new GpsError('denied', DENIED_MESSAGE)));
         } else {
-          // Don't block login on a transient unavailable/timeout when the
-          // Permissions API can't tell us the user clicked Allow. Resolve so
-          // login proceeds; the audit row's gps stays NULL for this request.
           settle(() => resolve());
         }
       },

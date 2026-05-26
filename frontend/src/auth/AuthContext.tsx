@@ -44,13 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithGoogleCredential = async (credential: string) => {
     // Show the location prompt FIRST. requireLocationGrant resolves as soon as
-    // the user clicks Allow (it does NOT wait for the actual coordinates —
-    // those keep loading in the background and land in the cache when ready).
-    // Rejects with GpsError if the user picks Never allow.
+    // the user clicks Allow (does NOT wait for the actual coordinates — those
+    // keep loading in the background). Rejects on Never allow.
     await requireLocationGrant();
     const { data } = await api.post('/auth/google', { credential });
     setStoredUser(JSON.stringify(data.user));
     setUser(data.user);
+
+    // Background: as soon as coords land in cache, send them to the backend
+    // so the just-created Login audit row is updated. Never blocks the UI —
+    // login is already done by this point.
+    requestGps()
+      .then((gps) => { if (gps) return api.patch('/audit/login/backfill-gps', { gps }); })
+      .catch(() => null);
   };
 
   const logout = async () => {
