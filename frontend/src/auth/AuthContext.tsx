@@ -1,10 +1,31 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
-import { api, clearStoredUser, getStoredUser, hasInFlightMutations, setStoredUser } from '../lib/api';
+import { api, clearStoredUser, getStoredUser, setStoredUser } from '../lib/api';
 import { pollForGpsCoords, requestGps, requireLocationGrant } from '../lib/geolocation';
 import { useIdleLogout } from './useIdleLogout';
 import { APP_CONFIG } from '../config/app-config';
 import type { User } from '../types';
+
+// Cross-tab "is anyone alive" marker. Every open tab writes the current
+// timestamp to localStorage every SESSION_ALIVE_INTERVAL_MS; on AuthProvider
+// mount we check the last write. If it's older than SESSION_ALIVE_STALE_MS
+// (i.e. no tab has been alive for that long), the user has fully closed the
+// app → force logout + redirect to /login.
+//
+// Why this beats pagehide-based detection:
+//   • Refresh: the tab unloads briefly then re-mounts. Last marker is still
+//     well within the stale window → no logout.
+//   • Tab close (sole tab): marker stops being refreshed; once the user opens
+//     the app again, the saved timestamp is past the stale window → logout.
+//   • Multiple tabs: any alive tab keeps the marker fresh, so closing one tab
+//     doesn't sign the user out of the others. When the LAST tab is closed,
+//     the marker goes stale and the next visit logs out.
+//
+// SESSION_ALIVE_STALE_MS is set comfortably larger than the worst-case reload
+// duration to avoid false positives on slow refreshes.
+const SESSION_ALIVE_KEY = 'em_tab_alive';
+const SESSION_ALIVE_INTERVAL_MS = 5_000;
+const SESSION_ALIVE_STALE_MS    = 30_000;
 
 interface AuthState {
   user: User | null;
@@ -69,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     try { await api.post('/auth/logout'); } catch { /* noop */ }
     clearStoredUser();
+    // Drop the cross-tab alive marker so the next mount doesn't see a stale
+    // value and immediately fire the "session ended" toast again.
+    try { localStorage.removeItem(SESSION_ALIVE_KEY); } catch { /* noop */ }
     // Note: GPS cache is intentionally preserved. Permission state is re-checked
     // on every login, so stale coords can't bypass a revoke; keeping the cache
     // avoids the 2–10s reacquisition delay on logout → log back in.
@@ -87,63 +111,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
   useIdleLogout({ enabled: !!user, timeoutMs: APP_CONFIG.idleLogoutMs, onIdle });
 
-  // Tab close / browser quit → server-side Logout via sendBeacon, which becomes
-  // `last_logout` in the calendar.
-  //
-  // Refresh-vs-close detection — browsers don't tell us directly, so we layer
-  // signals. The beacon ONLY fires when ALL of these say "actually closing":
-  //
-  //   1. event.persisted is false (not going to BFCache)
-  //   2. no API mutations are in flight (a click is still being processed)
-  //   3. no keyboard refresh combo (F5 / Ctrl+R / Cmd+R / Ctrl+Shift+R) was
-  //      pressed in the last 1.5s
-  //   4. document.visibilityState was already 'hidden' when pagehide fired.
-  //      Refresh fires pagehide while the page is still 'visible'; actual
-  //      tab close transitions to 'hidden' first (via visibilitychange).
-  //      Tracking the last observed state covers refreshes triggered by the
-  //      browser button or right-click → Reload, which don't fire keydown.
+  // Tab-alive marker check on mount. If the saved timestamp is older than
+  // SESSION_ALIVE_STALE_MS, all tabs were closed since the last write → force
+  // logout. Otherwise this tab takes over and keeps the marker fresh on a
+  // 5-second interval. Refresh re-runs this effect quickly enough that the
+  // marker is never stale; closing the last tab stops the interval and the
+  // next visit sees a stale value.
+  const [didStaleCheck, setDidStaleCheck] = useState(false);
   useEffect(() => {
     if (!user) return;
-    let refreshIntentAt = 0;
-    let lastVisibility: DocumentVisibilityState = document.visibilityState;
-    const REFRESH_GRACE_MS = 1500;
 
-    const onKey = (e: KeyboardEvent) => {
-      const isF5 = e.key === 'F5';
-      const isCtrlR = (e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R');
-      if (isF5 || isCtrlR) refreshIntentAt = Date.now();
-    };
-    const onVisibility = () => {
-      lastVisibility = document.visibilityState;
-    };
-    const onPageHide = (e: PageTransitionEvent) => {
-      if (e.persisted) return;
-      if (hasInFlightMutations()) return;
-      if (Date.now() - refreshIntentAt < REFRESH_GRACE_MS) return;
-      // Pull a fresh reading — visibilitychange may have fired in the same
-      // event-loop turn as pagehide.
-      const visAtHide = document.visibilityState;
-      if (visAtHide === 'visible' && lastVisibility === 'visible') return; // refresh / nav, not close
-      const url = `${api.defaults.baseURL || ''}/auth/logout`;
+    if (!didStaleCheck) {
+      setDidStaleCheck(true);
       try {
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          const blob = new Blob([], { type: 'application/x-www-form-urlencoded' });
-          navigator.sendBeacon(url, blob);
+        const last = Number(localStorage.getItem(SESSION_ALIVE_KEY) || 0);
+        if (last > 0 && Date.now() - last > SESSION_ALIVE_STALE_MS) {
+          // No tab kept the marker fresh recently → user closed every tab.
+          toast('Session ended (tab was closed). Please sign in again.', { icon: '🔒', duration: 5000 });
+          void logout().finally(() => {
+            if (typeof window !== 'undefined') window.location.assign('/login');
+          });
           return;
         }
-      } catch { /* fall through */ }
-      try { fetch(url, { method: 'POST', credentials: 'include', keepalive: true }); } catch { /* swallow */ }
-    };
+      } catch { /* localStorage unavailable — skip the gate */ }
+    }
 
-    window.addEventListener('keydown', onKey, { capture: true });
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('pagehide', onPageHide);
-    return () => {
-      window.removeEventListener('keydown', onKey, { capture: true });
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('pagehide', onPageHide);
+    const beat = () => {
+      try { localStorage.setItem(SESSION_ALIVE_KEY, String(Date.now())); } catch { /* noop */ }
     };
-  }, [user]);
+    beat();
+    const id = window.setInterval(beat, SESSION_ALIVE_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [user, didStaleCheck, logout]);
 
   return (
     <AuthContext.Provider value={{ user, loading, loginWithGoogleCredential, logout }}>
