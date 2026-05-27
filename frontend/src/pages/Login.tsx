@@ -5,20 +5,18 @@ import toast from 'react-hot-toast';
 import { ShieldCheck, Check, Rocket, Sparkles, Clock } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import illustration from '../assets/login-illustration.svg';
 
 export default function Login() {
   const { user, loginWithGoogleCredential } = useAuth();
+  const { lockLight } = useTheme();
   const nav = useNavigate();
 
-  // Login is always light — strip dark mode while this page is mounted,
-  // then restore the user's theme on unmount (preference is untouched).
-  useEffect(() => {
-    const root = document.documentElement;
-    const wasDark = root.classList.contains('dark');
-    root.classList.remove('dark');
-    return () => { if (wasDark) root.classList.add('dark'); };
-  }, []);
+  // Login is always light. lockLight() ref-counts a light-mode override on
+  // ThemeProvider so the dark class can't get re-applied after we strip it
+  // (which is what was happening when the user's OS / saved pref was dark).
+  useEffect(() => lockLight(), [lockLight]);
 
   if (user) return <Navigate to="/" replace />;
 

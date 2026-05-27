@@ -5,6 +5,7 @@ import { ChevronDown, LogOut, Menu, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import GlobalSearch from './GlobalSearch';
+import GpsStatusBadge from './GpsStatusBadge';
 import Notifications from './Notifications';
 
 const titles: Record<string, { title: string; sub: string }> = {
@@ -55,7 +56,11 @@ export default function Navbar({ onOpenMobileMenu }: { onOpenMobileMenu?: () => 
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <GlobalSearch />
+          {/* Global search is admin-only — employees don't manage clients/projects/people,
+              so the search bar was just clutter for them. */}
+          {user?.role === 'Admin' && <GlobalSearch />}
+
+          <GpsStatusBadge />
 
           <div className="hidden md:flex flex-col items-end leading-tight pr-2">
             <span className="text-[11px] text-slate-500 dark:text-slate-400">{dateLabel}</span>

@@ -111,7 +111,7 @@ export default function Notifications() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 mt-2 w-96 z-50 rounded-2xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden"
+            className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] max-w-[24rem] sm:w-96 z-50 rounded-2xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden"
           >
             <div className="px-4 py-3 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
               <div>

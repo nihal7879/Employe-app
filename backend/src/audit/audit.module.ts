@@ -6,6 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { getRequestContext } from '../common/utils/request-context';
+import { APP_CONFIG } from '../config/app-config';
 
 @Injectable()
 class AuditService {
@@ -50,7 +51,7 @@ class AuditService {
     const row = await this.db('audit_logs')
       .where({ employee_id, event_type: 'Login' })
       .whereNull('gps')
-      .whereRaw('created_at >= NOW() - INTERVAL 10 MINUTE')
+      .whereRaw('created_at >= NOW() - INTERVAL ? MINUTE', [APP_CONFIG.gpsBackfillWindowMinutes])
       .orderBy('created_at', 'desc')
       .first('id');
     // eslint-disable-next-line no-console
@@ -62,6 +63,91 @@ class AuditService {
     if (ctx.browser) update.browser = ctx.browser;
     await this.db('audit_logs').where({ id: row.id }).update(update);
     return { updated: 1, id: row.id };
+  }
+
+  // First Login event for the given employee on the given date, restricted
+  // to the 8:00–23:59 window. Excludes 12 AM–7:59 AM logins (midnight auto-
+  // refresh, pre-dawn testing) — the first login at or after 8 AM, even if
+  // it's late evening, becomes the start of the work day.
+  async dayStart(employee_id: number, date: string) {
+    const row = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Login' })
+      .whereRaw('DATE(created_at) = ?', [date])
+      .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
+      .orderBy('created_at', 'asc')
+      .first('id', 'created_at');
+    if (!row) return { start_time: null, audit_id: null };
+    // Return just HH:MM:SS so the frontend can compare with daily_tasks.start_time
+    const created = String(row.created_at);
+    const m = created.match(/(\d{2}):(\d{2}):(\d{2})/);
+    return {
+      start_time: m ? `${m[1]}:${m[2]}:${m[3]}` : null,
+      audit_id: row.id,
+    };
+  }
+
+  // First Login + LAST Logout per day across a range. Powers the activity
+  // calendar's in/out stamps. Logout sources we deliberately include:
+  //   • manual sign-out (the dropdown)
+  //   • 20-min idle logout (frontend posts /auth/logout)
+  //   • tab close / browser quit (pagehide beacon → /auth/logout)
+  // Taking MAX(Logout) gives the true end of the work session even when an
+  // employee signs in/out multiple times across the day.
+  //
+  // Login times respect the day-start window; logout times do not (a logout
+  // captured at 11 PM should still surface as the work-day's bookend).
+  async dayBoundsRange(employee_id: number, from: string, to: string) {
+    const logins = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Login' })
+      .whereRaw('DATE(created_at) BETWEEN ? AND ?', [from, to])
+      .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
+      .groupBy(this.db.raw('DATE(created_at)'))
+      .select(this.db.raw('DATE(created_at) as d'), this.db.raw('MIN(created_at) as ts'));
+
+    const logouts = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Logout' })
+      .whereRaw('DATE(created_at) BETWEEN ? AND ?', [from, to])
+      .groupBy(this.db.raw('DATE(created_at)'))
+      .select(this.db.raw('DATE(created_at) as d'), this.db.raw('MAX(created_at) as ts'));
+
+    // MySQL2 returns DATETIME columns as JS Date objects (server-local TZ);
+    // DATE() can come back as either a Date or a 'YYYY-MM-DD' string depending
+    // on driver config. Handle both robustly — otherwise the keys here won't
+    // match the YYYY-MM-DD keys the frontend uses to look bounds up.
+    const toHMS = (ts: unknown): string | null => {
+      if (ts instanceof Date) {
+        const h = String(ts.getHours()).padStart(2, '0');
+        const mi = String(ts.getMinutes()).padStart(2, '0');
+        const s = String(ts.getSeconds()).padStart(2, '0');
+        return `${h}:${mi}:${s}`;
+      }
+      const m = String(ts).match(/(\d{2}):(\d{2}):(\d{2})/);
+      return m ? `${m[1]}:${m[2]}:${m[3]}` : null;
+    };
+    const toKey = (d: unknown): string => {
+      if (d instanceof Date) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      }
+      const s = String(d);
+      const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+      return m ? `${m[1]}-${m[2]}-${m[3]}` : s.slice(0, 10);
+    };
+
+    const out: Record<string, { first_login: string | null; last_logout: string | null }> = {};
+    for (const r of logins as Array<{ d: unknown; ts: unknown }>) {
+      const k = toKey(r.d);
+      out[k] = out[k] || { first_login: null, last_logout: null };
+      out[k].first_login = toHMS(r.ts);
+    }
+    for (const r of logouts as Array<{ d: unknown; ts: unknown }>) {
+      const k = toKey(r.d);
+      out[k] = out[k] || { first_login: null, last_logout: null };
+      out[k].last_logout = toHMS(r.ts);
+    }
+    return out;
   }
 
   // Login count per employee — useful for admin dashboard
@@ -112,6 +198,37 @@ class AuditController {
     if (!body?.gps) return { updated: 0 };
     const ctx = getRequestContext(req);
     return this.s.backfillLastLoginGps(user.id, String(body.gps), { ip: ctx.ip, device: ctx.device, browser: ctx.browser });
+  }
+
+  // Returns the employee's day-start time (first Login within 8 AM – 8 PM).
+  // Employees see only their own; admins can pass ?employee_id=N.
+  @Get('day-start')
+  dayStart(
+    @CurrentUser() user: AuthUser,
+    @Query('date') date: string,
+    @Query('employee_id') employeeIdParam?: string,
+  ) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return { start_time: null, audit_id: null };
+    }
+    const empId = user.role === 'Admin' && employeeIdParam ? Number(employeeIdParam) : user.id;
+    return this.s.dayStart(empId, date);
+  }
+
+  // Per-day in/out times across a date range. Used by the activity calendar
+  // (day / week / month views). Returns an object keyed by YYYY-MM-DD.
+  @Get('day-bounds')
+  dayBounds(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('employee_id') employeeIdParam?: string,
+  ) {
+    if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return {};
+    }
+    const empId = user.role === 'Admin' && employeeIdParam ? Number(employeeIdParam) : user.id;
+    return this.s.dayBoundsRange(empId, from, to);
   }
 }
 

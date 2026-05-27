@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Clock, Coffee, Trash2, Plus, Eye, Pencil } from 'lucide-react';
@@ -96,8 +96,12 @@ function groupHours(tasks: DailyTask[], field: keyof DailyTask, fallback: string
 }
 
 export default function MyTimeTracker({ employeeId, adminView = false }: { employeeId?: string; adminView?: boolean }) {
+  const [searchParams] = useSearchParams();
+  const initialDate = searchParams.get('date');
+  // Honor ?date=YYYY-MM-DD deep links (e.g. from the dashboard calendar) by
+  // opening directly on that date in Day view.
   const [view, setView] = useState<View>('day');
-  const [date, setDate] = useState(todayStr());
+  const [date, setDate] = useState(() => (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayStr()));
   const [customFrom, setCustomFrom] = useState(monthStartStr());
   const [customTo, setCustomTo] = useState(todayStr());
   const [tasks, setTasks] = useState<DailyTask[]>([]);
@@ -105,7 +109,19 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
   const [editTask, setEditTask] = useState<DailyTask | null>(null);
+  // First Login event of the day (8AM-11:59PM) — defines when the work day actually started.
+  const [dayStart, setDayStart] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  // If the user lands on a fresh ?date=... after the page is already mounted,
+  // jump the view to that date too.
+  useEffect(() => {
+    if (initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+      setDate(initialDate);
+      setView('day');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDate]);
 
   const range = useMemo(
     () => (view === 'range' ? { from: customFrom, to: customTo } : rangeFor(view, date)),
@@ -120,6 +136,26 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [range.from, range.to, employeeId]);
+
+  // Day view only: fetch the first 8AM-11:59PM Login of the selected date as
+  // the actual start-of-work time. Empty in week/month/range — those don't
+  // have a single day to anchor on.
+  useEffect(() => {
+    if (view !== 'day') { setDayStart(null); return; }
+    api.get('/audit/day-start', { params: { date, employee_id: employeeId || undefined } })
+      .then((r) => setDayStart(r.data?.start_time || null))
+      .catch(() => setDayStart(null));
+  }, [view, date, employeeId]);
+
+  // Day-start for *today*, regardless of which day is being viewed. The edit
+  // modal only opens for today's tasks, so this is the right floor for editing.
+  const [todayDayStart, setTodayDayStart] = useState<string | null>(null);
+  useEffect(() => {
+    if (adminView || employeeId) return; // employees viewing their own tracker only
+    api.get('/audit/day-start', { params: { date: todayStr() } })
+      .then((r) => setTodayDayStart(r.data?.start_time || null))
+      .catch(() => setTodayDayStart(null));
+  }, [adminView, employeeId]);
 
   const removeTask = async () => {
     if (confirmId == null) return;
@@ -182,7 +218,15 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
                 : <>{shortDate(range.from)} → {shortDate(range.to)}</>}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Total work: <span className="font-semibold text-brand-600 dark:text-brand-400 tabular-nums">{fmtHMS(workHours)} hrs</span>
+              {view === 'day' && (
+                <>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                    Your day started at {dayStart ? fmtTime(toMin(dayStart) || 0) : '—'}
+                  </span>
+                  {' · '}
+                </>
+              )}
+              Work hours: <span className="font-semibold text-brand-600 dark:text-brand-400 tabular-nums">{fmtHMS(workHours)}</span>
               {breakHours > 0 && (
                 <> · <span className="text-slate-500 dark:text-slate-400 tabular-nums">{fmtHMS(breakHours)} break</span></>
               )}
@@ -295,6 +339,7 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
 
       <EditTaskModal
         task={editTask}
+        minTime={todayDayStart}
         onClose={() => setEditTask(null)}
         onSaved={() => { setEditTask(null); load(); }}
       />
@@ -304,8 +349,8 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
 
 /* ---------------- Edit task (current-date description) ---------------- */
 
-function EditTaskModal({ task, onClose, onSaved }: {
-  task: DailyTask | null; onClose: () => void; onSaved: () => void;
+function EditTaskModal({ task, onClose, onSaved, minTime }: {
+  task: DailyTask | null; onClose: () => void; onSaved: () => void; minTime?: string | null;
 }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -424,11 +469,11 @@ function EditTaskModal({ task, onClose, onSaved }: {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="label">Start Time</label>
-              <TimePicker value={startTime} onChange={setStartTime} placeholder="Start" />
+              <TimePicker value={startTime} onChange={setStartTime} placeholder="Start" minTime={minTime} />
             </div>
             <div>
               <label className="label">End Time</label>
-              <TimePicker value={endTime} onChange={setEndTime} placeholder="End" />
+              <TimePicker value={endTime} onChange={setEndTime} placeholder="End" minTime={minTime} />
             </div>
             <div>
               <label className="label">Hours</label>
@@ -454,12 +499,12 @@ function EditTaskModal({ task, onClose, onSaved }: {
             <input required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Task title" />
           </div>
           <div>
-            <label className="label">Progress Status</label>
-            <Select value={progress} options={PROGRESS_OPTIONS} placeholder="Select status" onChange={setProgress} />
+            <label className="label">Description</label>
+            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Describe your task" className="resize-y" />
           </div>
           <div>
-            <label className="label">Description</label>
-            <textarea rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What did you work on?" className="resize-y" />
+            <label className="label">Progress Status</label>
+            <Select value={progress} options={PROGRESS_OPTIONS} placeholder="Select status" onChange={setProgress} />
           </div>
           <div className="flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
