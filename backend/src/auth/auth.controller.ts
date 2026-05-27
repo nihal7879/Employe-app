@@ -18,12 +18,15 @@ export class AuthController {
 
   private cookieOptions(): CookieOptions {
     const isProd = this.config.get<string>('NODE_ENV') === 'production';
+    // No maxAge / expires → session cookie. Browser deletes it on full close.
+    // Combined with the frontend's `pagehide` beacon (single-tab close) and
+    // the 20-min idle hook, this ensures a fresh Login audit row on every
+    // real return-to-work, which the day-start logic depends on.
     return {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       path: '/',
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     };
   }
 

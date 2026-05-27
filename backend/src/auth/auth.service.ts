@@ -5,6 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import type { RequestContext } from '../common/utils/request-context';
+import { APP_CONFIG } from '../config/app-config';
 
 @Injectable()
 export class AuthService {
@@ -53,7 +54,7 @@ export class AuthService {
       { sub: employee.id, email: employee.email, role: employee.role, name: employee.name },
       {
         secret: this.config.get<string>('JWT_SECRET', 'change-me'),
-        expiresIn: this.config.get<string>('JWT_EXPIRES_IN', '7d'),
+        expiresIn: this.config.get<string>('JWT_EXPIRES_IN', APP_CONFIG.jwtExpiresIn),
       },
     );
 

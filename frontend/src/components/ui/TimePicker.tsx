@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, X } from 'lucide-react';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')); // 01..12
-const MINUTES = ['00', '15', '30', '45'];
+const MINUTES = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
 const PERIODS: ('AM' | 'PM')[] = ['AM', 'PM'];
 
 // Stored value stays 24-hour "HH:MM"; the UI shows 12-hour with AM/PM.
@@ -21,18 +21,30 @@ function to24(h12: number, period: 'AM' | 'PM') {
   return String(h).padStart(2, '0');
 }
 
+// "HH:MM" or "HH:MM:SS" -> minutes since midnight. Returns -1 for empty/invalid.
+function timeToMins(t?: string): number {
+  if (!t || !t.includes(':')) return -1;
+  const [h, m] = t.split(':').map(Number);
+  if (Number.isNaN(h)) return -1;
+  return h * 60 + (m || 0);
+}
+
 export default function TimePicker({
-  value, onChange, placeholder = 'Pick a time', clearable = true, className = '',
+  value, onChange, placeholder = 'Pick a time', clearable = true, className = '', minTime,
 }: {
   value?: string;
   onChange: (v: string) => void;
   placeholder?: string;
   clearable?: boolean;
   className?: string;
+  // Earliest selectable time as "HH:MM" or "HH:MM:SS" (24-hour). Buttons that
+  // would produce a value below this are disabled.
+  minTime?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const cur = parse(value);
+  const minMins = timeToMins(minTime || undefined);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -42,12 +54,41 @@ export default function TimePicker({
     return () => window.removeEventListener('mousedown', onClick);
   }, []);
 
+  // A button is disabled when no combination of the remaining (unfixed) parts
+  // can yield a final time >= minTime. For hour/minute we use the currently
+  // selected period; for period we check the best case across all hours/minutes.
+  const periodDisabled = (p: 'AM' | 'PM') => {
+    if (minMins < 0) return false;
+    const bestMins = p === 'AM' ? 11 * 60 + 45 : 23 * 60 + 45;
+    return bestMins < minMins;
+  };
+  const hourDisabled = (hh: string) => {
+    if (minMins < 0) return false;
+    const h24 = Number(to24(Number(hh), cur.period));
+    return h24 * 60 + 45 < minMins; // best case = :45
+  };
+  const minuteDisabled = (mm: string) => {
+    if (minMins < 0 || !cur.h12) return false;
+    const h24 = Number(to24(Number(cur.h12), cur.period));
+    return h24 * 60 + Number(mm) < minMins;
+  };
+
   const commit = (h12: number, minute: string, period: 'AM' | 'PM') => {
     onChange(`${to24(h12, period)}:${minute}`);
   };
-  const pickHour = (hh: string) => commit(Number(hh), cur.minute || '00', cur.period);
-  const pickMinute = (mm: string) => commit(cur.h12 ? Number(cur.h12) : 12, mm, cur.period);
-  const pickPeriod = (p: 'AM' | 'PM') => { commit(cur.h12 ? Number(cur.h12) : 12, cur.minute || '00', p); setOpen(false); };
+  const pickHour = (hh: string) => {
+    if (hourDisabled(hh)) return;
+    commit(Number(hh), cur.minute || '00', cur.period);
+  };
+  const pickMinute = (mm: string) => {
+    if (minuteDisabled(mm)) return;
+    commit(cur.h12 ? Number(cur.h12) : 12, mm, cur.period);
+  };
+  const pickPeriod = (p: 'AM' | 'PM') => {
+    if (periodDisabled(p)) return;
+    commit(cur.h12 ? Number(cur.h12) : 12, cur.minute || '00', p);
+    setOpen(false);
+  };
 
   const display = value && value.includes(':') ? `${cur.h12}:${cur.minute} ${cur.period}` : '';
 
@@ -78,37 +119,64 @@ export default function TimePicker({
             className="absolute left-0 mt-2 z-50 rounded-2xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl p-1.5 flex gap-0.5"
           >
             <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100 dark:border-white/10">
-              {HOURS.map((hh) => (
-                <button
-                  type="button"
-                  key={hh}
-                  onClick={() => pickHour(hh)}
-                  className={`block w-10 text-center text-sm py-1.5 rounded-md transition-colors
-                    ${cur.h12 === hh ? 'bg-brand-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
-                >{hh}</button>
-              ))}
+              {HOURS.map((hh) => {
+                const dis = hourDisabled(hh);
+                return (
+                  <button
+                    type="button"
+                    key={hh}
+                    onClick={() => pickHour(hh)}
+                    disabled={dis}
+                    title={dis && minTime ? 'Before earliest allowed time' : undefined}
+                    className={`block w-10 text-center text-sm py-1.5 rounded-md transition-colors
+                      ${dis
+                        ? 'text-slate-300 dark:text-slate-600 line-through cursor-not-allowed'
+                        : cur.h12 === hh
+                          ? 'bg-brand-600 text-white'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
+                  >{hh}</button>
+                );
+              })}
             </div>
             <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100 dark:border-white/10">
-              {MINUTES.map((mm) => (
-                <button
-                  type="button"
-                  key={mm}
-                  onClick={() => pickMinute(mm)}
-                  className={`block w-10 text-center text-sm py-1.5 rounded-md transition-colors
-                    ${cur.minute === mm ? 'bg-brand-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
-                >{mm}</button>
-              ))}
+              {MINUTES.map((mm) => {
+                const dis = minuteDisabled(mm);
+                return (
+                  <button
+                    type="button"
+                    key={mm}
+                    onClick={() => pickMinute(mm)}
+                    disabled={dis}
+                    title={dis && minTime ? 'Before earliest allowed time' : undefined}
+                    className={`block w-10 text-center text-sm py-1.5 rounded-md transition-colors
+                      ${dis
+                        ? 'text-slate-300 dark:text-slate-600 line-through cursor-not-allowed'
+                        : cur.minute === mm
+                          ? 'bg-brand-600 text-white'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
+                  >{mm}</button>
+                );
+              })}
             </div>
             <div className="flex flex-col gap-1">
-              {PERIODS.map((p) => (
-                <button
-                  type="button"
-                  key={p}
-                  onClick={() => pickPeriod(p)}
-                  className={`w-10 text-center text-sm py-1.5 rounded-md transition-colors
-                    ${cur.period === p && display ? 'bg-brand-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
-                >{p}</button>
-              ))}
+              {PERIODS.map((p) => {
+                const dis = periodDisabled(p);
+                return (
+                  <button
+                    type="button"
+                    key={p}
+                    onClick={() => pickPeriod(p)}
+                    disabled={dis}
+                    title={dis && minTime ? 'Before earliest allowed time' : undefined}
+                    className={`w-10 text-center text-sm py-1.5 rounded-md transition-colors
+                      ${dis
+                        ? 'text-slate-300 dark:text-slate-600 line-through cursor-not-allowed'
+                        : cur.period === p && display
+                          ? 'bg-brand-600 text-white'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}`}
+                  >{p}</button>
+                );
+              })}
             </div>
           </motion.div>
         )}

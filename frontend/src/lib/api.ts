@@ -1,6 +1,13 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ensureGpsForMutate, getCachedGps, GpsError } from './geolocation';
+import { discoverPublicIp, getCachedPublicIp } from './publicIp';
+
+// Kick off public IP discovery in the background as soon as the module loads.
+// Subsequent requests pick the value out of the cache and attach it as a
+// header — used by the backend only when the proxy chain didn't yield a
+// usable address (local dev / NAT-without-proxy).
+void discoverPublicIp();
 
 // Wipe any legacy tokens that may have been stored in client-side storage
 // before the HttpOnly-cookie migration. We never want a token in JS anymore.
@@ -23,6 +30,14 @@ export const api = axios.create({
 });
 
 const MUTATE_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+
+// In-flight mutation counter. The pagehide beacon checks this and skips the
+// auto-logout if any write is currently mid-request — that's almost certainly
+// the user just clicking a button (e.g. "Log Task"), NOT actually leaving the
+// app. Prevents the tab-close beacon from racing a form submit and killing
+// the cookie before the response lands.
+let inFlightMutations = 0;
+export function hasInFlightMutations(): boolean { return inFlightMutations > 0; }
 // Endpoints whose writes MUST carry a fresh GPS fix. Other writes (e.g. /auth/logout)
 // are intentionally excluded so a denied user can still sign out cleanly.
 const GPS_REQUIRED_PREFIXES = ['/daily-tasks'];
@@ -55,12 +70,26 @@ api.interceptors.request.use(async (config) => {
       (config.headers as Record<string, string>)['X-GPS-Location'] = gps;
     }
   }
+
+  const publicIp = getCachedPublicIp();
+  if (publicIp) {
+    config.headers = config.headers || {};
+    (config.headers as Record<string, string>)['X-Client-Public-IP'] = publicIp;
+  }
+
+  if (MUTATE_METHODS.has(method)) inFlightMutations += 1;
   return config;
 });
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    const method = String(res.config.method || 'get').toLowerCase();
+    if (MUTATE_METHODS.has(method) && inFlightMutations > 0) inFlightMutations -= 1;
+    return res;
+  },
   (err) => {
+    const method = String(err.config?.method || 'get').toLowerCase();
+    if (MUTATE_METHODS.has(method) && inFlightMutations > 0) inFlightMutations -= 1;
     // Network failures (backend down, DNS, offline) have no `response`. Surface
     // a clear single toast so a stale GPS/permission toast can't be mistaken
     // for a server outage. Callers can still see `err.isNetworkError` to

@@ -23,6 +23,10 @@ export default function Tasks() {
     progress_status: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  // First Login of today (8 AM – 11:59 PM). Used as a floor for start/end
+  // time pickers so users can't log work before they were actually at their
+  // desk.
+  const [dayStart, setDayStart] = useState<string | null>(null);
 
   const progressStatusOptions = [
     { label: 'Completed', value: 'Completed' },
@@ -48,6 +52,12 @@ export default function Tasks() {
     setClients(c.data); setProjects(p.data); setActivities(a.data);
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  useEffect(() => {
+    api.get('/audit/day-start', { params: { date: todayStr() } })
+      .then((r) => setDayStart(r.data?.start_time || null))
+      .catch(() => setDayStart(null));
+  }, []);
 
   // Auto-calculate hours from start/end time
   useEffect(() => {
@@ -146,12 +156,12 @@ export default function Tasks() {
           </div>
           <div>
             <label className="label">Start Time</label>
-            <TimePicker value={form.start_time} placeholder="Start"
+            <TimePicker value={form.start_time} placeholder="Start" minTime={dayStart}
               onChange={(v) => setForm({ ...form, start_time: v })} />
           </div>
           <div>
             <label className="label">End Time</label>
-            <TimePicker value={form.end_time} placeholder="End"
+            <TimePicker value={form.end_time} placeholder="End" minTime={dayStart}
               onChange={(v) => setForm({ ...form, end_time: v })} />
           </div>
           <div>
@@ -181,12 +191,12 @@ export default function Tasks() {
           </div>
           <div className="md:col-span-3 lg:col-span-4">
             <label className="label">Task Title</label>
-            <input required maxLength={255}
+            <input required maxLength={255} placeholder="Task title"
               value={form.task_title} onChange={(e) => setForm({ ...form, task_title: e.target.value })} />
           </div>
           <div className="md:col-span-3 lg:col-span-4">
             <label className="label">Description</label>
-            <textarea rows={3} placeholder="What did you work on? Add context for your weekly summary…"
+            <textarea rows={3} placeholder="Describe your task"
               value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </div>
           <div className="md:col-span-3 lg:col-span-4 flex justify-end gap-2">

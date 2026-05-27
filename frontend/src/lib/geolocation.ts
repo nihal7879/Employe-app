@@ -1,11 +1,43 @@
 // Browser GPS — asks the user for permission once, caches the result for the session.
 // The cached value is attached to every API request as the X-GPS-Location header.
 
+import { APP_CONFIG } from '../config/app-config';
+
 const STORAGE_KEY = 'em_gps';
 const STORAGE_TS_KEY = 'em_gps_ts';
-const MAX_AGE_MS = 30 * 60 * 1000; // refresh every 30 min
+const MAX_AGE_MS = APP_CONFIG.gpsCacheMaxAgeMs;
 
 let inFlight: Promise<string | null> | null = null;
+
+// ---------------------------------------------------------------------------
+// Observable GPS state — the Navbar badge subscribes to this so users see
+// exactly what the location stack is doing (locating / ready / denied / error)
+// instead of having to guess from silent failures.
+// ---------------------------------------------------------------------------
+export type GpsState = 'idle' | 'locating' | 'ready' | 'denied' | 'error' | 'unsupported';
+
+let currentState: GpsState = 'idle';
+const stateSubscribers = new Set<(s: GpsState, coords: string | null) => void>();
+
+function emit() {
+  const coords = readCache();
+  for (const cb of stateSubscribers) {
+    try { cb(currentState, coords); } catch { /* swallow */ }
+  }
+}
+function setState(s: GpsState) {
+  if (currentState === s) return;
+  currentState = s;
+  emit();
+}
+export function getGpsState(): { state: GpsState; coords: string | null } {
+  return { state: currentState, coords: readCache() };
+}
+export function subscribeGpsState(cb: (s: GpsState, coords: string | null) => void): () => void {
+  stateSubscribers.add(cb);
+  cb(currentState, readCache());
+  return () => stateSubscribers.delete(cb);
+}
 
 function readCache(): string | null {
   try {
@@ -26,6 +58,7 @@ function writeCache(v: string) {
   } catch {
     /* sandboxed */
   }
+  setState('ready');
 }
 
 export function clearGpsCache() {
@@ -35,6 +68,7 @@ export function clearGpsCache() {
   } catch {
     /* sandboxed */
   }
+  if (currentState === 'ready') setState('idle');
 }
 
 export function getCachedGps(): string | null {
@@ -183,25 +217,51 @@ export class GpsError extends Error {
 // Used by the axios request interceptor + background refresh — silent failure is OK there.
 export function requestGps(): Promise<string | null> {
   const cached = readCache();
-  if (cached) return Promise.resolve(cached);
+  if (cached) { setState('ready'); return Promise.resolve(cached); }
   if (inFlight) return inFlight;
-  if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null);
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    setState('unsupported');
+    return Promise.resolve(null);
+  }
 
+  setState('locating');
   inFlight = new Promise<string | null>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude.toFixed(6);
         const lng = pos.coords.longitude.toFixed(6);
         const v = `${lat},${lng}`;
-        writeCache(v);
+        writeCache(v); // emits 'ready'
         resolve(v);
       },
-      () => resolve(null),
+      (err) => {
+        if (err.code === 1) setState('denied');
+        else setState('error');
+        resolve(null);
+      },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: MAX_AGE_MS },
     );
   }).finally(() => { inFlight = null; });
 
   return inFlight;
+}
+
+// Background helper for AuthContext: keep trying to read GPS for up to 60s
+// (the server's backfill window is 10 minutes, but in practice coords either
+// land within seconds or the device can't get a fix at all). Each attempt
+// drives the state machine — so the Navbar badge shows "Locating..." the
+// whole time and flips to "Located" the moment we succeed.
+export async function pollForGpsCoords(maxWaitMs: number = 60_000): Promise<string | null> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const coords = await requestGps();
+    if (coords) return coords;
+    // requestGps already burns ~8s on a failed attempt; wait a bit before
+    // retrying so we don't hammer the geolocation provider.
+    if (Date.now() - start + 4000 >= maxWaitMs) return null;
+    await new Promise((r) => setTimeout(r, 4000));
+  }
+  return null;
 }
 
 export const DENIED_MESSAGE =

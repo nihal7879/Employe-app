@@ -3,6 +3,7 @@ import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import type { RequestContext } from '../common/utils/request-context';
 import { CreateDailyTaskDto, ListDailyTasksDto, UpdateDailyTaskDto } from './dto/daily-task.dto';
+import { APP_CONFIG } from '../config/app-config';
 
 @Injectable()
 export class DailyTasksService {
@@ -49,6 +50,31 @@ export class DailyTasksService {
     return row;
   }
 
+  // First 8AM-11:59PM Login event for the employee on the given date. Tasks
+  // can't start before this time (the user wasn't "at work" yet). Returns
+  // "HH:MM:SS" or null if no qualifying login exists.
+  private async firstDayLogin(employee_id: number, date: string): Promise<string | null> {
+    const row = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Login' })
+      .whereRaw('DATE(created_at) = ?', [date])
+      .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
+      .orderBy('created_at', 'asc')
+      .first('created_at');
+    if (!row) return null;
+    const m = String(row.created_at).match(/(\d{2}):(\d{2}):(\d{2})/);
+    return m ? `${m[1]}:${m[2]}:${m[3]}` : null;
+  }
+
+  private fmt12(t?: string) {
+    if (!t) return '';
+    const m = t.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return t;
+    const h = Number(m[1]);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${m[2]} ${period}`;
+  }
+
   async create(employee_id: number, ctx: RequestContext, dto: CreateDailyTaskDto) {
     // Reject if another non-deleted task for this employee on the same date
     // overlaps the new [start_time, end_time) window. Two ranges overlap when
@@ -65,6 +91,19 @@ export class DailyTasksService {
         );
       }
     }
+
+    // Reject if the task starts BEFORE the employee's first login of the day
+    // (8AM-8PM window). The employee wasn't logged in yet, so they can't have
+    // been working on this task at that time.
+    if (dto.start_time && dto.task_date) {
+      const dayStart = await this.firstDayLogin(employee_id, dto.task_date);
+      if (dayStart && dto.start_time < dayStart) {
+        throw new ConflictException(
+          `You logged in at ${this.fmt12(dayStart)} on ${dto.task_date}. Tasks can't be logged before your first login of the day.`,
+        );
+      }
+    }
+
     const payload = {
       employee_id,
       ip_address: ctx.ip,
@@ -84,6 +123,20 @@ export class DailyTasksService {
     if (user.role !== 'Admin' && existing.employee_id !== user.id) {
       throw new ForbiddenException('Cannot edit another employee\'s task');
     }
+
+    // Same login-time guard applies when start_time is being changed: an
+    // edited task still can't begin before the employee's first login of the
+    // day. Admin edits are allowed to override (for corrections).
+    if (user.role !== 'Admin' && dto.start_time) {
+      const taskDate = dto.task_date || String(existing.task_date).slice(0, 10);
+      const dayStart = await this.firstDayLogin(existing.employee_id, taskDate);
+      if (dayStart && dto.start_time < dayStart) {
+        throw new ConflictException(
+          `You logged in at ${this.fmt12(dayStart)} on ${taskDate}. Tasks can't start before your first login of the day.`,
+        );
+      }
+    }
+
     const auditFields = ctx ? {
       updated_ip: ctx.ip,
       updated_gps: ctx.gps,
