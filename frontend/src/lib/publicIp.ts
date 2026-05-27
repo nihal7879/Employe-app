@@ -10,14 +10,17 @@ const KEY = 'em_public_ip';
 const TS_KEY = 'em_public_ip_ts';
 const MAX_AGE_MS = APP_CONFIG.publicIpCacheMaxAgeMs;
 
-// Ordered list of providers. We hit them in sequence with a short timeout
-// each; the first to answer wins. Picked services that return plain text so
-// we don't need to parse JSON and there's nothing to misinterpret.
-const PROVIDERS = [
+// Two provider tiers — try IPv4-only endpoints first so the audit log gets
+// the dotted-quad address most devices have. If both fail (rare IPv6-only
+// networks), fall through to a dual-stack endpoint that returns IPv6.
+const IPV4_PROVIDERS = [
   'https://api.ipify.org',
   'https://ipv4.icanhazip.com',
+];
+const IPV6_PROVIDERS = [
   'https://api64.ipify.org',
 ];
+const PROVIDERS = [...IPV4_PROVIDERS, ...IPV6_PROVIDERS];
 
 let inFlight: Promise<string | null> | null = null;
 

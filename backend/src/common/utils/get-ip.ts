@@ -21,6 +21,12 @@ function normalize(ip: string): string {
   return ip;
 }
 
+// Dotted-quad sanity check. Anything with a colon is treated as IPv6 (the
+// IPv4-mapped form like ::ffff:1.2.3.4 has already been stripped by normalize).
+function isIpv4(ip: string): boolean {
+  return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip);
+}
+
 // Pull the real client IP out of the request. Tries a sensible chain of proxy
 // headers (Cloudflare → nginx → standard XFF), then Express's req.ip, and
 // finally the raw socket. The first PUBLIC address wins — internal/loopback
@@ -51,13 +57,15 @@ export function getClientIp(req: Request): string {
   // which is the local-dev and NAT-without-proxy case.
   push(selfReported, req.headers['x-client-public-ip']);
 
-  // Trusted public IP wins.
-  for (const ip of trusted) if (!isInternalIp(ip)) return ip;
-
-  // Fall back to whatever the browser reported about itself.
-  for (const ip of selfReported) if (!isInternalIp(ip)) return ip;
-
-  // Last resort: at least record SOMETHING (the socket addr or a sentinel) so
-  // the column isn't blank and ops can tell that detection ran.
+  // Selection priority — pick the most useful identifier for the audit log:
+  //   1. trusted public IPv4   (most readable, most devices have one)
+  //   2. trusted public IPv6   (dual-stack / IPv6-only clients fall here)
+  //   3. self-reported public IPv4
+  //   4. self-reported public IPv6
+  //   5. anything we saw at all (lets ops tell that detection ran)
+  for (const ip of trusted)      if (!isInternalIp(ip) && isIpv4(ip)) return ip;
+  for (const ip of trusted)      if (!isInternalIp(ip))               return ip;
+  for (const ip of selfReported) if (!isInternalIp(ip) && isIpv4(ip)) return ip;
+  for (const ip of selfReported) if (!isInternalIp(ip))               return ip;
   return trusted[0] || selfReported[0] || 'unknown';
 }
