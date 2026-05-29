@@ -34,7 +34,12 @@ export default function Dashboard() {
   const [admin, setAdmin] = useState<any>(null);
   const [myToday, setMyToday] = useState<{ total_hours: number; tasks: DailyTask[] } | null>(null);
   const [monthTasks, setMonthTasks] = useState<DailyTask[]>([]);
-  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'quarter' | 'year'>('month');
+  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'quarter' | 'year'>('today');
+  // Yesterday's submission stats — fetched from /reports/daily so it works
+  // independently of analytics restarts and reuses the proven query.
+  const [ySubmitted, setYSubmitted] = useState(0);
+  const [yPendingList, setYPendingList] = useState<any[]>([]);
+  const [yDate, setYDate] = useState('');
 
   useEffect(() => {
     if (isAdmin) {
@@ -46,6 +51,21 @@ export default function Dashboard() {
             .then((rr) => setMonthTasks(rr.data || [])).catch(() => {});
         }
       }).catch(() => {});
+
+      // Yesterday's submission stats from the proven /reports/daily endpoint.
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const y = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      setYDate(y);
+      Promise.all([
+        api.get('/reports/daily', { params: { type: 'pending',  date: y } }),
+        api.get('/reports/daily', { params: { type: 'employee', date: y } }),
+      ])
+        .then(([pending, submitted]) => {
+          setYPendingList(Array.isArray(pending.data) ? pending.data : []);
+          setYSubmitted(Array.isArray(submitted.data) ? submitted.data.length : 0);
+        })
+        .catch(() => { setYPendingList([]); setYSubmitted(0); });
     } else {
       api.get('/daily-tasks/my/today').then((r) => setMyToday(r.data)).catch(() => {});
     }
@@ -159,26 +179,26 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Admin stat row — every card is clickable */}
+      {/* Admin stat row — focused on TODAY */}
       {isAdmin && admin && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <StatCard to="/admin/employees"      icon={<Users size={20} />}         label="Employees"     value={admin.counts.active_employees}    accent="brand" />
-          <StatCard to="/admin/clients"        icon={<Briefcase size={20} />}     label="Clients"       value={admin.counts.active_clients}      accent="pink"  />
-          <StatCard to="/admin/projects"       icon={<FolderKanban size={20} />}  label="Projects"      value={admin.counts.active_projects}     accent="ok"    />
-          <StatCard to="/reports"              icon={<Clock size={20} />}         label="Hours Today"   value={Number(admin.today?.hours || 0)}  accent="cyan" format={(n) => n.toFixed(1)} />
-          <StatCard to="/reports?type=pending" icon={<AlertTriangle size={20} />} label="Pending Subs." value={admin.counts.pending_submissions} accent="bad"   />
+          <StatCard to="/admin/today-present"     icon={<Users size={20} />}         label="Present Today"     value={Number(admin.counts.present_today || 0)}     accent="brand" />
+          <StatCard to="/admin/today-clients"     icon={<Briefcase size={20} />}     label="Clients Active"    value={(admin.today_clients || []).length}          accent="pink"  />
+          <StatCard to="/admin/today-projects"    icon={<FolderKanban size={20} />}  label="Projects Active"   value={(admin.today_projects || []).length}         accent="ok"    />
+          <StatCard to="/reports"                 icon={<Clock size={20} />}         label="Hours Till Now"    value={Number(admin.today?.hours || 0)}             accent="cyan"  format={(n) => n.toFixed(1)} />
+          <StatCard to="/admin/yesterday-pending" icon={<AlertTriangle size={20} />} label="Yesterday Pending" value={yPendingList.length}                         accent="bad"   />
         </div>
       )}
 
       {/* Submission compliance + Hours by weekday + Activity pie */}
       {isAdmin && admin && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Submission compliance — premium donut */}
+          {/* Submission compliance — YESTERDAY's data (today is still in progress) */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
             {(() => {
-              const totalEmp = Number(admin.counts.active_employees || 0);
-              const pendingCount = Number(admin.counts.pending_submissions || 0);
-              const submittedCount = Math.max(0, totalEmp - pendingCount);
+              const submittedCount = ySubmitted;
+              const pendingCount = yPendingList.length;
+              const totalEmp = submittedCount + pendingCount;
               const pct = totalEmp > 0 ? Math.round((submittedCount / totalEmp) * 100) : 0;
               const data = [
                 { name: 'Submitted', value: submittedCount, fill: '#10B981' },
@@ -188,8 +208,8 @@ export default function Dashboard() {
                 <>
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <div className="font-semibold">Today's submissions</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} have logged</div>
+                      <div className="font-semibold">Yesterday's submissions</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} submitted yesterday</div>
                     </div>
                     <span className={pct >= 80 ? 'pill-ok' : pct >= 50 ? 'pill-warn' : 'pill-bad'}>{pct}%</span>
                   </div>

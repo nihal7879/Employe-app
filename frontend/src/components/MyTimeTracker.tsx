@@ -139,13 +139,16 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
 
   // Day view only: fetch the first 8AM-11:59PM Login of the selected date as
   // the actual start-of-work time. Empty in week/month/range — those don't
-  // have a single day to anchor on.
+  // have a single day to anchor on. In admin "All employees" mode we skip the
+  // fetch — there is no single employee whose start-time would be meaningful,
+  // and the backend would otherwise fall back to the admin's own login.
   useEffect(() => {
     if (view !== 'day') { setDayStart(null); return; }
+    if (adminView && !employeeId) { setDayStart(null); return; }
     api.get('/audit/day-start', { params: { date, employee_id: employeeId || undefined } })
       .then((r) => setDayStart(r.data?.start_time || null))
       .catch(() => setDayStart(null));
-  }, [view, date, employeeId]);
+  }, [view, date, employeeId, adminView]);
 
   // Day-start for *today*, regardless of which day is being viewed. The edit
   // modal only opens for today's tasks, so this is the right floor for editing.
@@ -218,10 +221,10 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
                 : <>{shortDate(range.from)} → {shortDate(range.to)}</>}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {view === 'day' && (
+              {view === 'day' && !(adminView && !employeeId) && (
                 <>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    Your day started at {dayStart ? fmtTime(toMin(dayStart) || 0) : '—'}
+                    {adminView ? 'Day started at' : 'Your day started at'} {dayStart ? fmtTime(toMin(dayStart) || 0) : '—'}
                   </span>
                   {' · '}
                 </>
@@ -756,9 +759,17 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
   ].sort((a, b) => (a.s ?? 1e9) - (b.s ?? 1e9));
 
   return (
-    <div className="overflow-x-auto">
+    <div>
       {note && <p className="text-[11px] text-slate-400 mb-2">{note}</p>}
-      <table className="w-full">
+      <table className="w-full table-fixed">
+        <colgroup>
+          <col />
+          <col className="w-32" />
+          <col className="w-24" />
+          <col className="w-40" />
+          <col className="w-28" />
+          <col className="w-24" />
+        </colgroup>
         <thead>
           <tr>
             <th className="table-th">Project / Work order</th>
@@ -834,17 +845,28 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
             return (
               <tr key={t.id}>
                 <td className="table-td">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="h-9 w-9 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0" style={{ background: color }}>
                       {initial}
                     </div>
-                    <div className="min-w-0">
-                      <div className="font-semibold text-slate-900 dark:text-white truncate">{t.project_name || '—'}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="font-semibold text-slate-900 dark:text-white truncate"
+                        title={t.project_name || ''}
+                      >
+                        {t.project_name || '—'}
+                      </div>
+                      <div
+                        className="text-xs text-slate-500 dark:text-slate-400 truncate"
+                        title={[t.client_name, t.task_title].filter(Boolean).join(' · ')}
+                      >
                         {t.client_name || '—'}{t.task_title ? ` · ${t.task_title}` : ''}
                       </div>
                       {(t.assigned_by || t.reference) && (
-                        <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
+                        <div
+                          className="text-xs text-slate-400 dark:text-slate-500 truncate"
+                          title={[t.assigned_by && `Assigned by ${t.assigned_by}`, t.reference && `Ref: ${t.reference}`].filter(Boolean).join(' · ')}
+                        >
                           {t.assigned_by ? `Assigned by ${t.assigned_by}` : ''}
                           {t.assigned_by && t.reference ? ' · ' : ''}
                           {t.reference ? `Ref: ${t.reference}` : ''}

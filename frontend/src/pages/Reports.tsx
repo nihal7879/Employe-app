@@ -182,7 +182,16 @@ export default function Reports() {
             </div>
           )}
 
-          {tab === 'daily' ? <DailyTable type={dailyType} data={data} /> : <RangeTables data={data} only={rangeType} />}
+          {tab === 'daily' ? (
+            <DailyTable
+              type={dailyType}
+              data={data}
+              onOpenEmployeeDay={(empId) => {
+                setDayEmployee(String(empId));
+                setTab('day-view');
+              }}
+            />
+          ) : <RangeTables data={data} only={rangeType} />}
         </div>
       )}
 
@@ -577,7 +586,15 @@ function downloadCsv(filename: string, rows: Record<string, any>[]) {
 
 // --------- aggregate tables (daily/weekly/monthly) ---------
 
-function DailyTable({ type, data }: { type: DailyType; data: any }) {
+function DailyTable({
+  type,
+  data,
+  onOpenEmployeeDay,
+}: {
+  type: DailyType;
+  data: any;
+  onOpenEmployeeDay?: (empId: string | number) => void;
+}) {
   if (!Array.isArray(data)) return <p className="text-slate-400 text-sm">Loading…</p>;
   if (data.length === 0) return <p className="text-slate-400 text-sm">No data.</p>;
   const cols: Record<DailyType, { header: string[]; row: (r: any) => any[] }> = {
@@ -594,24 +611,38 @@ function DailyTable({ type, data }: { type: DailyType; data: any }) {
   };
   const numeric = (h: string) => ['Tasks', 'Total Hours', 'Hours'].includes(h);
   const headers = cols[type].header;
+  const clickable = (r: any) =>
+    !!onOpenEmployeeDay && (
+      (type === 'employee' && r.employee_id != null) ||
+      (type === 'pending'  && r.id != null)
+    );
+  const rowEmpId = (r: any) => (type === 'pending' ? r.id : r.employee_id);
   return (
     <table className="w-full">
       <thead>
         <tr>{headers.map((h) => <th key={h} className={`table-th ${numeric(h) ? 'text-right' : ''}`}>{h}</th>)}</tr>
       </thead>
       <tbody>
-        {data.map((r: any, i: number) => (
-          <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
-            {cols[type].row(r).map((v, j) => (
-              <td
-                key={j}
-                className={`table-td ${numeric(headers[j]) ? 'text-right tabular-nums' : ''} ${j === 0 ? 'font-medium text-slate-900 dark:text-white' : ''}`}
-              >
-                {v}
-              </td>
-            ))}
-          </tr>
-        ))}
+        {data.map((r: any, i: number) => {
+          const isClickable = clickable(r);
+          return (
+            <tr
+              key={i}
+              onClick={isClickable ? () => onOpenEmployeeDay!(rowEmpId(r)) : undefined}
+              className={`hover:bg-slate-50 dark:hover:bg-white/[0.03] ${isClickable ? 'cursor-pointer' : ''}`}
+              title={isClickable ? 'View this employee’s day' : undefined}
+            >
+              {cols[type].row(r).map((v, j) => (
+                <td
+                  key={j}
+                  className={`table-td ${numeric(headers[j]) ? 'text-right tabular-nums' : ''} ${j === 0 ? 'font-medium text-slate-900 dark:text-white' : ''} ${isClickable && j === 0 ? 'text-brand-700 dark:text-brand-300 hover:underline' : ''}`}
+                >
+                  {v}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
