@@ -14,9 +14,15 @@ import StatCard from '../components/StatCard';
 import SegmentedBar, { Segment } from '../components/SegmentedBar';
 import AnimatedNumber from '../components/AnimatedNumber';
 import EmployeeActivityCharts from '../components/EmployeeActivityCharts';
+import { Skeleton } from '../components/Skeleton';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import type { DailyTask } from '../types';
+
+// Module-level cache keyed by period so navigating away and back to the
+// dashboard paints the last data instantly (stale-while-revalidate) instead of
+// flashing empty cards while the API call is in flight.
+const dashCache: Record<string, { admin: any; ySubmitted: number; yPendingList: any[]; yDate: string }> = {};
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16'];
 
@@ -33,7 +39,6 @@ export default function Dashboard() {
   const isAdmin = user?.role === 'Admin';
   const [admin, setAdmin] = useState<any>(null);
   const [myToday, setMyToday] = useState<{ total_hours: number; tasks: DailyTask[] } | null>(null);
-  const [monthTasks, setMonthTasks] = useState<DailyTask[]>([]);
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'quarter' | 'year'>('today');
   // Yesterday's submission stats — fetched from /reports/daily so it works
   // independently of analytics restarts and reuses the proven query.
@@ -43,29 +48,38 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (isAdmin) {
-      api.get('/analytics/dashboard', { params: { period } }).then((r) => {
-        setAdmin(r.data);
-        const range = r.data?.range;
-        if (range?.from && range?.to) {
-          api.get('/daily-tasks', { params: { from: range.from, to: range.to } })
-            .then((rr) => setMonthTasks(rr.data || [])).catch(() => {});
-        }
-      }).catch(() => {});
+      // Paint cached data immediately (no flash); fall back to the skeleton only
+      // when this period has never been loaded this session.
+      const cached = dashCache[period];
+      if (cached) {
+        setAdmin(cached.admin);
+        setYSubmitted(cached.ySubmitted);
+        setYPendingList(cached.yPendingList);
+        setYDate(cached.yDate);
+      } else {
+        setAdmin(null);
+      }
 
       // Yesterday's submission stats from the proven /reports/daily endpoint.
       const d = new Date();
       d.setDate(d.getDate() - 1);
       const y = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       setYDate(y);
+
       Promise.all([
+        api.get('/analytics/dashboard', { params: { period } }),
         api.get('/reports/daily', { params: { type: 'pending',  date: y } }),
         api.get('/reports/daily', { params: { type: 'employee', date: y } }),
       ])
-        .then(([pending, submitted]) => {
-          setYPendingList(Array.isArray(pending.data) ? pending.data : []);
-          setYSubmitted(Array.isArray(submitted.data) ? submitted.data.length : 0);
+        .then(([dash, pending, submitted]) => {
+          const pendingList = Array.isArray(pending.data) ? pending.data : [];
+          const submittedCount = Array.isArray(submitted.data) ? submitted.data.length : 0;
+          setAdmin(dash.data);
+          setYPendingList(pendingList);
+          setYSubmitted(submittedCount);
+          dashCache[period] = { admin: dash.data, ySubmitted: submittedCount, yPendingList: pendingList, yDate: y };
         })
-        .catch(() => { setYPendingList([]); setYSubmitted(0); });
+        .catch(() => {});
     } else {
       api.get('/daily-tasks/my/today').then((r) => setMyToday(r.data)).catch(() => {});
     }
@@ -89,21 +103,22 @@ export default function Dashboard() {
   const teamGoal = Number(admin?.counts?.active_employees || 0) * 8;
   const teamPct = teamGoal > 0 ? Math.min(100, Math.round((teamHoursToday / teamGoal) * 100)) : 0;
 
-  // Project × activity segmented bars (excludes breaks + no-project entries)
+  // Project × activity segmented bars — built from the server-aggregated
+  // project_activity rows (no raw-task fetch needed).
   const projectSegments = useMemo(() => {
     const byProject: Record<string, { project_name: string; tasks: number; total_hours: number; perActivity: Record<string, number> }> = {};
-    for (const t of monthTasks) {
-      if (t.is_break) continue;
-      if (!t.project_name) continue;
-      const key = t.project_name;
+    for (const r of (admin?.project_activity || [])) {
+      if (!r.project_name) continue;
+      const key = r.project_name;
+      const hrs = Number(r.total_hours || 0);
       if (!byProject[key]) byProject[key] = { project_name: key, tasks: 0, total_hours: 0, perActivity: {} };
-      byProject[key].tasks += 1;
-      byProject[key].total_hours += Number(t.hours_spent || 0);
-      const a = t.activity_name || 'Other';
-      byProject[key].perActivity[a] = (byProject[key].perActivity[a] || 0) + Number(t.hours_spent || 0);
+      byProject[key].tasks += Number(r.tasks || 0);
+      byProject[key].total_hours += hrs;
+      const a = r.activity_name || 'Other';
+      byProject[key].perActivity[a] = (byProject[key].perActivity[a] || 0) + hrs;
     }
     return Object.values(byProject).sort((a, b) => b.total_hours - a.total_hours).slice(0, 8);
-  }, [monthTasks]);
+  }, [admin]);
 
   const activityColorMap = useMemo(() => {
     const set = new Set<string>();
@@ -178,6 +193,10 @@ export default function Dashboard() {
           )}
         </div>
       </motion.div>
+
+      {/* Loading skeleton — shown on first load (and uncached period switches)
+          so the dashboard never flashes empty cards before data arrives. */}
+      {isAdmin && !admin && <DashboardSkeleton />}
 
       {/* Admin stat row — focused on TODAY */}
       {isAdmin && admin && (
@@ -266,11 +285,10 @@ export default function Dashboard() {
             {(() => {
               const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
               const buckets = Array(7).fill(0).map((_, i) => ({ day: dows[i], hours: 0, tasks: 0 }));
-              for (const t of monthTasks) {
-                const d = new Date(t.task_date);
-                const idx = (d.getDay() + 6) % 7; // Monday=0
-                buckets[idx].hours += Number(t.hours_spent || 0);
-                buckets[idx].tasks += 1;
+              for (const r of (admin?.hours_by_weekday || [])) {
+                const idx = (Number(r.dow) + 5) % 7; // MySQL DAYOFWEEK 1=Sun → Monday=0
+                buckets[idx].hours += Number(r.hours || 0);
+                buckets[idx].tasks += Number(r.tasks || 0);
               }
               const topDay = [...buckets].sort((a, b) => b.hours - a.hours)[0];
               return (
@@ -500,7 +518,7 @@ export default function Dashboard() {
       )}
 
       {/* Bottom row: top employees bar + client distribution pie */}
-      {isAdmin && (
+      {isAdmin && admin && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
             <div className="flex items-center gap-3 mb-4">
@@ -653,6 +671,41 @@ export default function Dashboard() {
         </motion.div>
       )}
     </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <>
+      {/* Stat row */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="card p-4 space-y-3">
+            <Skeleton className="h-9 w-9 rounded-xl" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-7 w-16" />
+          </div>
+        ))}
+      </div>
+      {/* Compliance pie + weekday bars */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="card p-5 flex flex-col items-center justify-center gap-4 h-72">
+          <Skeleton className="h-40 w-40 rounded-full" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <div className="card p-5 lg:col-span-2 space-y-4">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-52 w-full" />
+        </div>
+      </div>
+      {/* Two wide chart cards */}
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div key={i} className="card p-5 md:p-6 space-y-4">
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="h-60 w-full" />
+        </div>
+      ))}
+    </>
   );
 }
 
