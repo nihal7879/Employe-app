@@ -807,7 +807,7 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
             }
             const t = row.t;
             const { s, e } = row;
-            const dur = fmtHMS(Number(t.hours_spent || 0));
+            const dur = s != null && e != null ? fmtHMS((e - s) / 60) : fmtHMS(Number(t.hours_spent || 0));
             if (t.is_break) {
               return (
                 <tr key={t.id} className="bg-slate-50/60 dark:bg-white/[0.02]">

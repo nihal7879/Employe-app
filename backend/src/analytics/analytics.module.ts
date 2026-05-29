@@ -235,6 +235,8 @@ class AnalyticsService {
       todayProjects,
       yesterdaySubmittedIds,
       yesterdayPendingList,
+      hoursByWeekday,
+      projectActivity,
     ] = await Promise.all([
       this.db('employees')
         .leftJoin('roles', 'employees.role_id', 'roles.id')
@@ -404,6 +406,32 @@ class AnalyticsService {
           'departments.department_name',
         )
         .orderBy('employees.name', 'asc'),
+      // Server-aggregated hours-by-weekday (replaces the raw /daily-tasks fetch
+      // the dashboard used to chain just to bucket hours per weekday).
+      this.db('daily_tasks')
+        .where('is_deleted', false)
+        .andWhereBetween('task_date', [monthStart, monthEnd])
+        .groupBy(this.db.raw('DAYOFWEEK(task_date)'))
+        .select(this.db.raw('DAYOFWEEK(task_date) as dow'))
+        .sum({ hours: 'hours_spent' })
+        .count({ tasks: '*' })
+        .orderBy('dow', 'asc'),
+      // Server-aggregated project × activity hours (replaces the same raw fetch
+      // the dashboard used to chain for the project segmented bars).
+      this.db('daily_tasks')
+        .leftJoin('projects', 'daily_tasks.project_id', 'projects.id')
+        .leftJoin('activities', 'daily_tasks.activity_id', 'activities.id')
+        .where('daily_tasks.is_deleted', false)
+        .andWhere('daily_tasks.is_break', false)
+        .andWhereBetween('daily_tasks.task_date', [monthStart, monthEnd])
+        .whereNotNull('daily_tasks.project_id')
+        .groupBy('projects.project_name', 'activities.activity_name')
+        .select(
+          'projects.project_name',
+          this.db.raw("COALESCE(activities.activity_name, 'Other') as activity_name"),
+        )
+        .sum({ total_hours: 'hours_spent' })
+        .count({ tasks: '*' }),
     ]);
 
     const yesterdaySubmittedCount = (yesterdaySubmittedIds as any[]).filter((r) => r.employee_id != null).length;
@@ -426,6 +454,8 @@ class AnalyticsService {
       top_clients: topClients,
       top_employees: topEmployees,
       daily_trend: dailyTrend,
+      hours_by_weekday: hoursByWeekday,
+      project_activity: projectActivity,
       range: { from: monthStart, to: monthEnd },
       present_today: presentToday,
       today_clients: todayClients,
