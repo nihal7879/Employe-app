@@ -7,7 +7,10 @@ import { RolesGuard } from '../common/guards/roles.guard';
 
 class ProjectDto {
   @IsInt() client_id: number;
-  @IsString() project_code: string;
+  // project_code is required at the DB level but auto-generated server-side
+  // when omitted (see ProjectsService.create). Kept optional in the DTO so
+  // the admin form doesn't have to collect it.
+  @IsOptional() @IsString() project_code?: string;
   @IsString() project_name: string;
   @IsOptional() @IsDateString() start_date?: string;
   @IsOptional() @IsDateString() end_date?: string;
@@ -33,8 +36,30 @@ class ProjectsService {
     return this.base().andWhere('projects.id', id).first();
   }
   async create(dto: ProjectDto) {
-    const [id] = await this.db('projects').insert(dto);
+    const payload: Record<string, unknown> = { ...dto };
+    if (!payload.project_code || !String(payload.project_code).trim()) {
+      payload.project_code = await this.makeUniqueCode(dto.project_name);
+    }
+    const [id] = await this.db('projects').insert(payload);
     return this.findOne(id);
+  }
+
+  // Auto-generate a unique project_code from the name when the admin form
+  // omits it. Slug the name, upper-case it, and append a numeric suffix only
+  // if a row with that code already exists.
+  private async makeUniqueCode(name: string): Promise<string> {
+    const base = (name || 'PROJECT')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 28) || 'PROJECT';
+    let code = base;
+    let n = 1;
+    while (await this.db('projects').where('project_code', code).first()) {
+      n += 1;
+      code = `${base}-${n}`.slice(0, 32);
+    }
+    return code;
   }
   async update(id: number, dto: Partial<ProjectDto>) {
     await this.db('projects').where({ id }).update(dto);

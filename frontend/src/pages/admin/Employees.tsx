@@ -13,8 +13,13 @@ interface Role { id: number; role_name: string; }
 
 const emptyForm = {
   employee_code: '', name: '', email: '', role_id: '', department_id: '',
-  designation: '', joining_date: '', phone: '',
+  designation: '', joining_date: '', phone: '', is_active: true,
 };
+
+const STATUS_OPTIONS = [
+  { label: 'Active',   value: 'active',   color: '#10B981' },
+  { label: 'Inactive', value: 'inactive', color: '#94A3B8' },
+];
 
 export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -51,6 +56,7 @@ export default function Employees() {
       employee_code: e.employee_code, name: e.name, email: e.email,
       role_id: String(e.role_id), department_id: String(e.department_id),
       designation: e.designation || '', joining_date: e.joining_date || '', phone: e.phone || '',
+      is_active: e.is_active,
     });
     setOpen(true);
   };
@@ -63,6 +69,7 @@ export default function Employees() {
         role_id: Number(form.role_id),
         department_id: Number(form.department_id),
         joining_date: form.joining_date || undefined,
+        is_active: !!form.is_active,
       };
       if (editing) await api.put(`/employees/${editing.id}`, payload);
       else await api.post('/employees', payload);
@@ -108,10 +115,11 @@ export default function Employees() {
               <th className="table-th">Role</th>
               <th className="table-th">Department</th>
               <th className="table-th">Designation</th>
-              <th className="table-th"></th>
+              <th className="table-th w-24">Status</th>
+              <th className="table-th w-24"></th>
             </tr></thead>
             <tbody>
-              {loading && <TableSkeleton rows={6} cols={7} />}
+              {loading && <TableSkeleton rows={6} cols={8} />}
               {!loading && employees.map((e) => (
                 <tr key={e.id}>
                   <td className="table-td">{e.employee_code}</td>
@@ -120,7 +128,12 @@ export default function Employees() {
                   <td className="table-td"><span className="pill-soft">{e.role_name}</span></td>
                   <td className="table-td">{e.department_name}</td>
                   <td className="table-td">{e.designation}</td>
-                  <td className="table-td text-right space-x-1">
+                  <td className="table-td">
+                    <span className={e.is_active ? 'pill-ok' : 'pill-soft'}>
+                      {e.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="table-td text-right whitespace-nowrap space-x-1">
                     <button
                       onClick={() => openEdit(e)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-500/15"
@@ -136,7 +149,7 @@ export default function Employees() {
                   </td>
                 </tr>
               ))}
-              {!loading && employees.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No employees.</td></tr>}
+              {!loading && employees.length === 0 && <tr><td colSpan={8} className="table-td text-center text-slate-400 py-6">No employees.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -197,6 +210,14 @@ export default function Employees() {
             <DatePicker
               value={form.joining_date}
               onChange={(v) => setForm({ ...form, joining_date: v })}
+            />
+          </div>
+          <div>
+            <label className="label">Status</label>
+            <Select
+              value={form.is_active ? 'active' : 'inactive'}
+              options={STATUS_OPTIONS}
+              onChange={(v) => setForm({ ...form, is_active: v === 'active' })}
             />
           </div>
           <div className="sm:col-span-2 flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">

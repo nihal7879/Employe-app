@@ -6,23 +6,20 @@ import type { Client, Project } from '../../types';
 import Modal from '../../components/Modal';
 import Select from '../../components/Select';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import DatePicker from '../../components/ui/DatePicker';
 import { TableSkeleton } from '../../components/Skeleton';
 
-const empty = { client_id: '', project_code: '', project_name: '', start_date: '', end_date: '', project_status: 'Active' };
+// Simplified to Active / Inactive only. Other lifecycle states (Completed,
+// Pending, On Hold) were removed per admin feedback — they were rarely set.
+const empty = { client_id: '', project_name: '', project_status: 'Active' };
 
 const STATUS_OPTIONS = [
-  { label: 'Active',    value: 'Active',    color: '#10B981' },
-  { label: 'Pending',   value: 'Pending',   color: '#F59E0B' },
-  { label: 'On Hold',   value: 'On Hold',   color: '#94A3B8' },
-  { label: 'Completed', value: 'Completed', color: '#06B6D4' },
+  { label: 'Active',   value: 'Active',   color: '#10B981' },
+  { label: 'Inactive', value: 'Inactive', color: '#94A3B8' },
 ];
 
 const STATUS_PILL: Record<string, string> = {
-  Active: 'pill-ok',
-  Completed: 'pill-cyan',
-  Pending: 'pill-warn',
-  'On Hold': 'pill-soft',
+  Active:   'pill-ok',
+  Inactive: 'pill-soft',
 };
 
 export default function Projects() {
@@ -48,12 +45,8 @@ export default function Projects() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = {
-        ...form,
-        client_id: Number(form.client_id),
-        start_date: form.start_date || undefined,
-        end_date: form.end_date || undefined,
-      };
+      // Backend auto-generates project_code from project_name when missing.
+      const payload = { ...form, client_id: Number(form.client_id) };
       if (editing) await api.put(`/projects/${editing.id}`, payload);
       else await api.post('/projects', payload);
       toast.success('Saved'); setOpen(false); load();
@@ -89,48 +82,47 @@ export default function Projects() {
       <div className="card p-4 overflow-x-auto">
         <table className="w-full">
           <thead><tr>
-            <th className="table-th">Code</th>
             <th className="table-th">Project</th>
             <th className="table-th">Client</th>
-            <th className="table-th">Start</th>
-            <th className="table-th">End</th>
             <th className="table-th">Status</th>
             <th className="table-th"></th>
           </tr></thead>
           <tbody>
-            {loading && <TableSkeleton rows={6} cols={7} />}
-            {!loading && projects.map((p) => (
-              <tr key={p.id}>
-                <td className="table-td">{p.project_code}</td>
-                <td className="table-td font-medium text-slate-900 dark:text-white">{p.project_name}</td>
-                <td className="table-td">{p.client_name}</td>
-                <td className="table-td">{p.start_date}</td>
-                <td className="table-td">{p.end_date}</td>
-                <td className="table-td"><span className={STATUS_PILL[p.project_status] || 'pill-soft'}>{p.project_status}</span></td>
-                <td className="table-td text-right space-x-1">
-                  <button
-                    onClick={() => {
-                      setEditing(p);
-                      setForm({
-                        client_id: String(p.client_id), project_code: p.project_code, project_name: p.project_name,
-                        start_date: p.start_date || '', end_date: p.end_date || '', project_status: p.project_status,
-                      });
-                      setOpen(true);
-                    }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-500/15"
-                  >
-                    <Pencil size={16} />
-                  </button>
-                  <button
-                    onClick={() => setConfirmId(p.id)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!loading && projects.length === 0 && <tr><td colSpan={7} className="table-td text-center text-slate-400 py-6">No projects.</td></tr>}
+            {loading && <TableSkeleton rows={6} cols={4} />}
+            {!loading && projects.map((p) => {
+              // Treat any legacy status (Completed / Pending / On Hold) as Inactive in the UI.
+              const status = p.project_status === 'Active' ? 'Active' : 'Inactive';
+              return (
+                <tr key={p.id}>
+                  <td className="table-td font-medium text-slate-900 dark:text-white">{p.project_name}</td>
+                  <td className="table-td">{p.client_name}</td>
+                  <td className="table-td"><span className={STATUS_PILL[status]}>{status}</span></td>
+                  <td className="table-td text-right space-x-1">
+                    <button
+                      onClick={() => {
+                        setEditing(p);
+                        setForm({
+                          client_id: String(p.client_id),
+                          project_name: p.project_name,
+                          project_status: status,
+                        });
+                        setOpen(true);
+                      }}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-500/15"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      onClick={() => setConfirmId(p.id)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-500/15"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && projects.length === 0 && <tr><td colSpan={4} className="table-td text-center text-slate-400 py-6">No projects.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -147,12 +139,11 @@ export default function Projects() {
             />
           </div>
           <div>
-            <label className="label">Project Code</label>
-            <input
-              required
-              placeholder="e.g. ADF-001"
-              value={form.project_code}
-              onChange={(e) => setForm({ ...form, project_code: e.target.value })}
+            <label className="label">Status</label>
+            <Select
+              value={form.project_status}
+              options={STATUS_OPTIONS}
+              onChange={(v) => setForm({ ...form, project_status: v })}
             />
           </div>
           <div className="sm:col-span-2">
@@ -162,28 +153,6 @@ export default function Projects() {
               placeholder="e.g. Kali Loader"
               value={form.project_name}
               onChange={(e) => setForm({ ...form, project_name: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="label">Start Date</label>
-            <DatePicker
-              value={form.start_date}
-              onChange={(v) => setForm({ ...form, start_date: v })}
-            />
-          </div>
-          <div>
-            <label className="label">End Date</label>
-            <DatePicker
-              value={form.end_date}
-              onChange={(v) => setForm({ ...form, end_date: v })}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Status</label>
-            <Select
-              value={form.project_status}
-              options={STATUS_OPTIONS}
-              onChange={(v) => setForm({ ...form, project_status: v })}
             />
           </div>
           <div className="sm:col-span-2 flex justify-end gap-2 -mx-5 -mb-5 px-5 py-4 border-t border-slate-100 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.02]">

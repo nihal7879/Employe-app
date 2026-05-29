@@ -12,6 +12,10 @@ import Clients from './pages/admin/Clients';
 import Projects from './pages/admin/Projects';
 import Activities from './pages/admin/Activities';
 import EmailLogs from './pages/admin/EmailLogs';
+import TodayPresent from './pages/admin/TodayPresent';
+import TodayClients from './pages/admin/TodayClients';
+import TodayProjects from './pages/admin/TodayProjects';
+import YesterdayPending from './pages/admin/YesterdayPending';
 
 export default function App() {
   return (
@@ -32,6 +36,10 @@ export default function App() {
             <Route path="/admin/projects" element={<Projects />} />
             <Route path="/admin/activities" element={<Activities />} />
             <Route path="/admin/email-logs" element={<EmailLogs />} />
+            <Route path="/admin/today-present" element={<TodayPresent />} />
+            <Route path="/admin/today-clients" element={<TodayClients />} />
+            <Route path="/admin/today-projects" element={<TodayProjects />} />
+            <Route path="/admin/yesterday-pending" element={<YesterdayPending />} />
           </Route>
         </Route>
       </Route>
