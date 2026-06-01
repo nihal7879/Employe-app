@@ -28,12 +28,16 @@ export class SchedulerService {
 
   // ===== 11:00 PM — detailed per-employee digest of the day's work to admin =====
   private async sendAdminDailySummary(date: string) {
-    const admin = process.env.ADMIN_EMAIL;
-    if (!admin) return;
+    // Always include nirav@millicent.in alongside the configured ADMIN_EMAIL
+    // (deduped). Nodemailer accepts a comma-separated recipient list.
+    const recipients = Array.from(
+      new Set([process.env.ADMIN_EMAIL, 'nirav@millicent.in'].filter(Boolean) as string[]),
+    ).join(', ');
+    if (!recipients) return;
     const digest = await this.tasks.getAdminDailyDigest(date);
     const overrides = await this.tasks.getLoginMismatches(date);
     await this.mail.send({
-      to: admin,
+      to: recipients,
       subject: `Team Daily Summary — ${date}`,
       type: 'Daily Summary',
       html: adminDailyDigestEmail({ ...digest, overrides }),
