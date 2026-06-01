@@ -38,7 +38,11 @@ export default function Reports() {
     DAILY_TYPES.includes(params.get('type') as DailyType) ? (params.get('type') as DailyType) : 'employee',
   );
   const [rangeType, setRangeType] = useState<RangeType>('all');
-  const [date, setDate] = useState(todayStr());
+  // Daily-tab date is deep-linkable via ?date=YYYY-MM-DD (e.g. from the
+  // dashboard's "Yesterday's submissions" card).
+  const [date, setDate] = useState(
+    /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') ? (params.get('date') as string) : todayStr(),
+  );
   const [from, setFrom] = useState(monthStartStr());
   const [to, setTo] = useState(todayStr());
   const [data, setData] = useState<any>(null);

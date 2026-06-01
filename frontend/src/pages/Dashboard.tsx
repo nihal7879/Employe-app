@@ -233,10 +233,10 @@ export default function Dashboard() {
               return (
                 <>
                   <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <div className="font-semibold">Yesterday's submissions</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} submitted yesterday</div>
-                    </div>
+                    <Link to={`/reports?tab=daily&type=employee&date=${yDate}`} className="group">
+                      <div className="font-semibold group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">Yesterday's submissions</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} submitted yesterday · view report →</div>
+                    </Link>
                     <span className={pct >= 80 ? 'pill-ok' : pct >= 50 ? 'pill-warn' : 'pill-bad'}>{pct}%</span>
                   </div>
                   <div className="relative h-52 mx-auto w-full max-w-[200px]">
