@@ -1,0 +1,14 @@
+{
+  "_comment": "Live-editable business rules. Edit a value and save — changes take effect immediately, no rebuild and no server restart needed. Keep this valid JSON. Times are HH:MM:SS (24h).",
+
+  "dayStartEarliest": "08:00:00",
+  "dayStartLatest": "23:59:59",
+
+  "loginGraceMinutes": 120,
+
+  "backdateMaxDays": 7,
+
+  "gpsBackfillWindowMinutes": 10,
+
+  "jwtExpiresIn": "7d"
+}

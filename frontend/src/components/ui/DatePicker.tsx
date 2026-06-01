@@ -31,9 +31,14 @@ function afterDay(a: Date, b: Date) {
   const bb = new Date(b.getFullYear(), b.getMonth(), b.getDate());
   return aa.getTime() > bb.getTime();
 }
+function beforeDay(a: Date, b: Date) {
+  const aa = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+  const bb = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+  return aa.getTime() < bb.getTime();
+}
 
 export default function DatePicker({
-  value, onChange, placeholder = 'Pick a date', clearable = true, disabled = false, className = '', maxDate,
+  value, onChange, placeholder = 'Pick a date', clearable = true, disabled = false, className = '', maxDate, minDate,
 }: {
   value?: string;
   onChange: (v: string) => void;
@@ -43,6 +48,8 @@ export default function DatePicker({
   className?: string;
   /** Optional latest selectable date (YYYY-MM-DD). If omitted, all dates are selectable. */
   maxDate?: string;
+  /** Optional earliest selectable date (YYYY-MM-DD). If omitted, no lower bound. */
+  minDate?: string;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -50,10 +57,14 @@ export default function DatePicker({
   const [pos, setPos] = useState({ top: 0, left: 0, openUp: true });
   const selected = useMemo(() => parseYmd(value), [value]);
   const max = useMemo(() => parseYmd(maxDate), [maxDate]);
+  const min = useMemo(() => parseYmd(minDate), [minDate]);
   const [view, setView] = useState(() => selected || new Date());
   const atMaxMonth = !!max && (
     view.getFullYear() > max.getFullYear() ||
     (view.getFullYear() === max.getFullYear() && view.getMonth() >= max.getMonth()));
+  const atMinMonth = !!min && (
+    view.getFullYear() < min.getFullYear() ||
+    (view.getFullYear() === min.getFullYear() && view.getMonth() <= min.getMonth()));
 
   useEffect(() => { if (selected) setView(selected); }, [value]);
 
@@ -140,8 +151,9 @@ export default function DatePicker({
     >
       <div className="flex items-center justify-between mb-2 px-1">
         <button type="button"
+          disabled={atMinMonth}
           onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
-          className="h-7 w-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.08] flex items-center justify-center text-slate-500 dark:text-slate-400"
+          className="h-7 w-7 rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.08] flex items-center justify-center text-slate-500 dark:text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
         ><ChevronLeft size={16} /></button>
         <div className="text-sm font-semibold text-slate-900 dark:text-white">
           {MONTHS[view.getMonth()]} {view.getFullYear()}
@@ -161,19 +173,19 @@ export default function DatePicker({
         {days.map(({ d, muted }, i) => {
           const isSel = selected && sameDay(d, selected);
           const isToday = sameDay(d, new Date());
-          const isFuture = !!max && afterDay(d, max);
+          const isOut = (!!max && afterDay(d, max)) || (!!min && beforeDay(d, min));
           return (
             <button
               type="button"
               key={i}
-              disabled={isFuture}
-              onClick={() => { if (isFuture) return; onChange(toYmd(d)); setOpen(false); }}
+              disabled={isOut}
+              onClick={() => { if (isOut) return; onChange(toYmd(d)); setOpen(false); }}
               className={`h-8 rounded-lg text-xs font-medium transition-all
-                ${isFuture ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
+                ${isOut ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed'
                       : isSel ? 'bg-brand-600 text-white shadow-[0_2px_8px_-2px_rgba(124,58,237,0.5)]'
                       : muted ? 'text-slate-300 dark:text-slate-600 hover:bg-slate-50 dark:hover:bg-white/[0.04]'
                       : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.08]'}
-                ${!isSel && isToday && !isFuture ? 'ring-1 ring-brand-300 dark:ring-brand-500/50' : ''}`}
+                ${!isSel && isToday && !isOut ? 'ring-1 ring-brand-300 dark:ring-brand-500/50' : ''}`}
             >
               {d.getDate()}
             </button>

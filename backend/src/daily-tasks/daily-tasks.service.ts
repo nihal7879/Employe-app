@@ -65,6 +65,48 @@ export class DailyTasksService {
     return m ? `${m[1]}:${m[2]}:${m[3]}` : null;
   }
 
+  // Per-employee task-logging permissions.
+  private async employeePerms(employee_id: number) {
+    const row = await this.db('employees')
+      .where({ id: employee_id })
+      .first('allow_backdated_tasks', 'allow_log_anytime');
+    return {
+      allow_backdated_tasks: !!row?.allow_backdated_tasks,
+      allow_log_anytime: !!row?.allow_log_anytime,
+    };
+  }
+
+  // Validate the task_date against the employee's backdating permission.
+  // Without permission, only today is allowed; with it, any date from
+  // (today - backdateMaxDays) through today — never the future.
+  private assertDateAllowed(taskDate: string, allowBackdated: boolean) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (taskDate === today) return;
+    if (!allowBackdated) {
+      throw new ForbiddenException('You can only log tasks for today.');
+    }
+    if (taskDate > today) {
+      throw new ForbiddenException('Tasks cannot be logged for a future date.');
+    }
+    const floor = new Date(today + 'T00:00:00Z');
+    floor.setUTCDate(floor.getUTCDate() - APP_CONFIG.backdateMaxDays);
+    const earliest = floor.toISOString().slice(0, 10);
+    if (taskDate < earliest) {
+      throw new ForbiddenException(`You can only backdate tasks up to ${APP_CONFIG.backdateMaxDays} days.`);
+    }
+  }
+
+  // The earliest start_time the employee may log given their day-start login:
+  // (login − loginGraceMinutes), clamped to 00:00, as "HH:MM:SS".
+  private earliestStart(dayStart: string): string {
+    const m = dayStart.match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return dayStart;
+    const mins = Math.max(0, Number(m[1]) * 60 + Number(m[2]) - APP_CONFIG.loginGraceMinutes);
+    const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+    const mm = String(mins % 60).padStart(2, '0');
+    return `${hh}:${mm}:00`;
+  }
+
   private fmt12(t?: string) {
     if (!t) return '';
     const m = t.match(/^(\d{1,2}):(\d{2})/);
@@ -75,7 +117,32 @@ export class DailyTasksService {
     return `${h12}:${m[2]} ${period}`;
   }
 
+  // True when a task's start_time is before the allowed floor, compared at
+  // MINUTE granularity. The floor is (day-start login − loginGraceMinutes), so
+  // an employee may log tasks for the grace window preceding their first login.
+  // The picker stores start_time as "HH:MM" while logins carry seconds
+  // ("HH:MM:SS"); a raw string compare wrongly flags a task that starts in the
+  // same minute as the floor ("10:20" < "10:20:00"). Truncating both to minutes
+  // keeps the guard in sync with what the picker offers.
+  private startsBeforeLogin(startTime: string, dayStart: string): boolean {
+    const toMins = (t: string) => {
+      const m = t.match(/^(\d{1,2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+    };
+    const start = toMins(startTime);
+    const login = toMins(dayStart);
+    if (start < 0 || login < 0) return false;
+    const floor = Math.max(0, login - APP_CONFIG.loginGraceMinutes);
+    return start < floor;
+  }
+
   async create(employee_id: number, ctx: RequestContext, dto: CreateDailyTaskDto) {
+    const perms = await this.employeePerms(employee_id);
+    const taskDate = String(dto.task_date).slice(0, 10);
+
+    // Enforce the today-only rule unless the employee may backdate.
+    this.assertDateAllowed(taskDate, perms.allow_backdated_tasks);
+
     // Reject if another non-deleted task for this employee on the same date
     // overlaps the new [start_time, end_time) window. Two ranges overlap when
     // existing.start_time < new.end_time AND existing.end_time > new.start_time.
@@ -94,12 +161,13 @@ export class DailyTasksService {
 
     // Reject if the task starts BEFORE the employee's first login of the day
     // (8AM-8PM window). The employee wasn't logged in yet, so they can't have
-    // been working on this task at that time.
-    if (dto.start_time && dto.task_date) {
-      const dayStart = await this.firstDayLogin(employee_id, dto.task_date);
-      if (dayStart && dto.start_time < dayStart) {
+    // been working on this task at that time. Skipped when the employee has the
+    // log-anytime permission (e.g. they forgot to log in that morning).
+    if (!perms.allow_log_anytime && dto.start_time && dto.task_date) {
+      const dayStart = await this.firstDayLogin(employee_id, taskDate);
+      if (dayStart && this.startsBeforeLogin(dto.start_time, dayStart)) {
         throw new ConflictException(
-          `You logged in at ${this.fmt12(dayStart)} on ${dto.task_date}. Tasks can't be logged before your first login of the day.`,
+          `You logged in at ${this.fmt12(dayStart)} on ${dto.task_date}. The earliest you can log a task is ${this.fmt12(this.earliestStart(dayStart))}.`,
         );
       }
     }
@@ -126,14 +194,18 @@ export class DailyTasksService {
 
     // Same login-time guard applies when start_time is being changed: an
     // edited task still can't begin before the employee's first login of the
-    // day. Admin edits are allowed to override (for corrections).
+    // day. Admin edits are allowed to override (for corrections), as are
+    // employees granted the log-anytime permission.
     if (user.role !== 'Admin' && dto.start_time) {
-      const taskDate = dto.task_date || String(existing.task_date).slice(0, 10);
-      const dayStart = await this.firstDayLogin(existing.employee_id, taskDate);
-      if (dayStart && dto.start_time < dayStart) {
-        throw new ConflictException(
-          `You logged in at ${this.fmt12(dayStart)} on ${taskDate}. Tasks can't start before your first login of the day.`,
-        );
+      const perms = await this.employeePerms(existing.employee_id);
+      if (!perms.allow_log_anytime) {
+        const taskDate = (dto.task_date || String(existing.task_date)).slice(0, 10);
+        const dayStart = await this.firstDayLogin(existing.employee_id, taskDate);
+        if (dayStart && this.startsBeforeLogin(dto.start_time, dayStart)) {
+          throw new ConflictException(
+            `You logged in at ${this.fmt12(dayStart)} on ${taskDate}. The earliest a task can start is ${this.fmt12(this.earliestStart(dayStart))}.`,
+          );
+        }
       }
     }
 

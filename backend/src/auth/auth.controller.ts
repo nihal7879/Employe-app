@@ -81,7 +81,10 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentUser() user: AuthUser) {
-    return user;
+  async me(@CurrentUser() user: AuthUser) {
+    // Merge the live permission flags so the task form unlocks/locks the moment
+    // an admin toggles them (no re-login needed).
+    const perms = await this.auth.permissionsFor(user.id);
+    return { ...user, ...perms };
   }
 }

@@ -76,7 +76,8 @@ export default function Employees() {
       toast.success('Saved');
       setOpen(false); load();
     } catch (e: any) {
-      toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
+      const msg = e.response?.data?.message;
+      toast.error((Array.isArray(msg) ? msg[0] : msg) || 'Failed');
     }
   };
 

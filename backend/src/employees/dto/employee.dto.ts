@@ -24,3 +24,8 @@ export class UpdateEmployeeDto {
   @IsOptional() @IsString() profile_image?: string;
   @IsOptional() @IsBoolean() is_active?: boolean;
 }
+
+export class UpdatePermissionsDto {
+  @IsOptional() @IsBoolean() allow_backdated_tasks?: boolean;
+  @IsOptional() @IsBoolean() allow_log_anytime?: boolean;
+}

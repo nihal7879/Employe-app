@@ -7,10 +7,21 @@ import type { Activity, Client, Project } from '../types';
 import Select from '../components/Select';
 import DatePicker from '../components/ui/DatePicker';
 import TimePicker from '../components/ui/TimePicker';
+import { useAuth } from '../auth/AuthContext';
+import { APP_CONFIG } from '../config/app-config';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
+// today - N days as YYYY-MM-DD (earliest date a backdater may pick).
+const daysAgoStr = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+};
 
 export default function Tasks() {
+  const { user } = useAuth();
+  const canBackdate = !!user?.allow_backdated_tasks;
+  const canLogAnytime = !!user?.allow_log_anytime;
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -55,9 +66,15 @@ export default function Tasks() {
 
   useEffect(() => {
     api.get('/audit/day-start', { params: { date: todayStr() } })
-      .then((r) => setDayStart(r.data?.start_time || null))
+      // earliest_task_time = login − grace window; the floor the picker enforces.
+      .then((r) => setDayStart(r.data?.earliest_task_time || null))
       .catch(() => setDayStart(null));
   }, []);
+
+  // The login-time floor only applies to today's entries logged normally.
+  // It's lifted for employees with the log-anytime permission, and for any
+  // backdated date (that day's floor is enforced server-side instead).
+  const timeFloor = canLogAnytime || form.task_date !== todayStr() ? null : dayStart;
 
   // Auto-calculate hours from start/end time
   useEffect(() => {
@@ -87,6 +104,12 @@ export default function Tasks() {
     if (!form.progress_status) {
       toast.error('Select a progress status'); return;
     }
+    if (!form.assigned_by.trim()) {
+      toast.error('Enter who assigned this'); return;
+    }
+    if (!form.description.trim()) {
+      toast.error('Enter a description'); return;
+    }
     setSubmitting(true);
     try {
       await api.post('/daily-tasks', {
@@ -98,7 +121,7 @@ export default function Tasks() {
         description: form.description,
         assigned_by: form.assigned_by || undefined,
         reference: form.reference || undefined,
-        task_date: todayStr(),
+        task_date: form.task_date,
         start_time: form.start_time || undefined,
         end_time: form.end_time || undefined,
         progress_status: form.progress_status,
@@ -107,7 +130,8 @@ export default function Tasks() {
       setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '', progress_status: '' });
     } catch (e: any) {
       if (e?.reason || e?.isNetworkError) { setSubmitting(false); return; }
-      toast.error(e.response?.data?.message?.[0] || e.response?.data?.message || 'Failed');
+      const msg = e.response?.data?.message;
+      toast.error((Array.isArray(msg) ? msg[0] : msg) || 'Failed');
     } finally {
       setSubmitting(false);
     }
@@ -136,8 +160,19 @@ export default function Tasks() {
         <form onSubmit={submit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-5">
           <div>
             <label className="label">Date</label>
-            <DatePicker value={todayStr()} clearable={false} disabled onChange={() => {}} />
-            <p className="mt-1 text-[11px] text-ink-mute">You can only log today&apos;s tasks</p>
+            <DatePicker
+              value={form.task_date}
+              clearable={false}
+              disabled={!canBackdate}
+              maxDate={todayStr()}
+              minDate={canBackdate ? daysAgoStr(APP_CONFIG.backdateMaxDays) : undefined}
+              onChange={(v) => setForm({ ...form, task_date: v || todayStr() })}
+            />
+            <p className="mt-1 text-[11px] text-ink-mute">
+              {canBackdate
+                ? `You can log up to ${APP_CONFIG.backdateMaxDays} days back`
+                : 'You can only log today’s tasks'}
+            </p>
           </div>
           <div>
             <label className="label">Client</label>
@@ -156,12 +191,12 @@ export default function Tasks() {
           </div>
           <div>
             <label className="label">Start Time</label>
-            <TimePicker value={form.start_time} placeholder="Start" minTime={dayStart}
+            <TimePicker value={form.start_time} placeholder="Start" minTime={timeFloor}
               onChange={(v) => setForm({ ...form, start_time: v })} />
           </div>
           <div>
             <label className="label">End Time</label>
-            <TimePicker value={form.end_time} placeholder="End" minTime={dayStart}
+            <TimePicker value={form.end_time} placeholder="End" minTime={timeFloor}
               onChange={(v) => setForm({ ...form, end_time: v })} />
           </div>
           <div>

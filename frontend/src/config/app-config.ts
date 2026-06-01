@@ -53,6 +53,13 @@ export const APP_CONFIG = {
   // Self-reported public IP (X-Client-Public-IP fallback)
   // -----------------------------------------------------------------------
   publicIpCacheMaxAgeMs: envNum('VITE_PUBLIC_IP_CACHE_MAX_AGE_MS', 60 * 60 * 1000),
+
+  // -----------------------------------------------------------------------
+  // Backdated task entry
+  // -----------------------------------------------------------------------
+  // How many days back an employee with the `allow_backdated_tasks` permission
+  // may log. Mirrors the backend's BACKDATE_MAX_DAYS — keep them in sync.
+  backdateMaxDays: envNum('VITE_BACKDATE_MAX_DAYS', 7),
 };
 
 export type AppConfig = typeof APP_CONFIG;

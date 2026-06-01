@@ -76,14 +76,25 @@ class AuditService {
       .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
       .orderBy('created_at', 'asc')
       .first('id', 'created_at');
-    if (!row) return { start_time: null, audit_id: null };
+    if (!row) return { start_time: null, earliest_task_time: null, audit_id: null };
     // Return just HH:MM:SS so the frontend can compare with daily_tasks.start_time
     const created = String(row.created_at);
     const m = created.match(/(\d{2}):(\d{2}):(\d{2})/);
-    return {
-      start_time: m ? `${m[1]}:${m[2]}:${m[3]}` : null,
-      audit_id: row.id,
-    };
+    const start_time = m ? `${m[1]}:${m[2]}:${m[3]}` : null;
+    // The actual floor the task-time picker should enforce: the login minus the
+    // configurable grace window (LOGIN_GRACE_MINUTES). Driving this from the API
+    // keeps the grace runtime-tunable on the backend with no frontend rebuild.
+    let earliest_task_time = start_time;
+    if (start_time) {
+      const mins = Math.max(
+        0,
+        Number(m![1]) * 60 + Number(m![2]) - APP_CONFIG.loginGraceMinutes,
+      );
+      const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+      const mm = String(mins % 60).padStart(2, '0');
+      earliest_task_time = `${hh}:${mm}:00`;
+    }
+    return { start_time, earliest_task_time, audit_id: row.id };
   }
 
   // First Login + LAST Logout per day across a range. Powers the activity
@@ -150,6 +161,40 @@ class AuditService {
     return out;
   }
 
+  // Per-employee presence for ANY single date: who logged in that day, with
+  // their earliest Login and latest Logout. Mirrors the dashboard's
+  // "present_today" block but parameterized by date so the admin can browse a
+  // calendar. Non-admin, active employees only; ordered by login time.
+  async presentOnDate(date: string) {
+    return this.db('audit_logs as a')
+      .innerJoin('employees', 'a.employee_id', 'employees.id')
+      .leftJoin('roles', 'employees.role_id', 'roles.id')
+      .leftJoin('departments', 'employees.department_id', 'departments.id')
+      .whereRaw('DATE(a.created_at) = ?', [date])
+      .andWhere({ 'employees.is_active': true, 'employees.is_deleted': false })
+      .whereNot('roles.role_name', 'Admin')
+      .whereExists(function () {
+        this.select('*').from('audit_logs as a2')
+          .whereRaw('a2.employee_id = a.employee_id')
+          .andWhereRaw('DATE(a2.created_at) = ?', [date])
+          .andWhere('a2.event_type', 'Login');
+      })
+      .groupBy(
+        'employees.id', 'employees.name', 'employees.email',
+        'employees.employee_code', 'departments.department_name',
+      )
+      .select(
+        'employees.id',
+        'employees.name',
+        'employees.email',
+        'employees.employee_code',
+        'departments.department_name',
+        this.db.raw("MIN(CASE WHEN a.event_type = 'Login'  THEN a.created_at END) as first_login"),
+        this.db.raw("MAX(CASE WHEN a.event_type = 'Logout' THEN a.created_at END) as last_logout"),
+      )
+      .orderByRaw("MIN(CASE WHEN a.event_type = 'Login' THEN a.created_at END) asc");
+  }
+
   // Login count per employee — useful for admin dashboard
   async loginCounts(params: { from?: string; to?: string }) {
     let q = this.db('audit_logs')
@@ -213,6 +258,15 @@ class AuditController {
     }
     const empId = user.role === 'Admin' && employeeIdParam ? Number(employeeIdParam) : user.id;
     return this.s.dayStart(empId, date);
+  }
+
+  // Per-employee presence for a single date (who logged in, with first login /
+  // last logout). Admin-only — powers the calendar-driven "Present" page.
+  @Get('present')
+  @Roles('Admin')
+  present(@Query('date') date: string) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+    return this.s.presentOnDate(date);
   }
 
   // Per-day in/out times across a date range. Used by the activity calendar

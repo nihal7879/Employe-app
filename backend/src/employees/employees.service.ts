@@ -1,7 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
-import { CreateEmployeeDto, UpdateEmployeeDto } from './dto/employee.dto';
+import { CreateEmployeeDto, UpdateEmployeeDto, UpdatePermissionsDto } from './dto/employee.dto';
 
 @Injectable()
 export class EmployeesService {
@@ -55,5 +55,15 @@ export class EmployeesService {
   async remove(id: number) {
     await this.db('employees').where({ id }).update({ is_deleted: true, is_active: false });
     return { success: true };
+  }
+
+  // Toggle the per-employee task-logging permissions (admin only). Only the
+  // flags present in the payload are written.
+  async setPermissions(id: number, dto: UpdatePermissionsDto) {
+    const patch: Record<string, boolean> = {};
+    if (dto.allow_backdated_tasks !== undefined) patch.allow_backdated_tasks = dto.allow_backdated_tasks;
+    if (dto.allow_log_anytime !== undefined) patch.allow_log_anytime = dto.allow_log_anytime;
+    if (Object.keys(patch).length) await this.db('employees').where({ id }).update(patch);
+    return this.findOne(id);
   }
 }
