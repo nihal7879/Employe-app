@@ -5,6 +5,25 @@ export interface TaskRow {
   task_title: string;
   hours_spent: number | string;
   description?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+}
+
+// "HH:MM[:SS]" -> minutes since midnight, or null.
+function toMin(t?: string | null): number | null {
+  if (!t) return null;
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+// "HH:MM[:SS]" -> "h:MM AM/PM", or "—".
+function fmt12(t?: string | null): string {
+  const mins = toMin(t);
+  if (mins == null) return '—';
+  const h = Math.floor(mins / 60);
+  const mm = mins % 60;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(mm).padStart(2, '0')} ${period}`;
 }
 
 export function employeeDailyReportEmail(opts: {
@@ -12,33 +31,67 @@ export function employeeDailyReportEmail(opts: {
   date: string;
   total_hours: number;
   tasks: TaskRow[];
+  first_login?: string | null;
+  last_logout?: string | null;
 }) {
-  const { name, date, total_hours, tasks } = opts;
+  const { name, date, total_hours, tasks, first_login = null, last_logout = null } = opts;
+  const loginMin = toMin(first_login);
+
+  // Flag any task that started before the employee's first login of the day.
+  // With the login-grace window these are allowed, but they're surfaced here
+  // so the employee/admin can confirm the back-dated start time is correct.
+  const flagged = (t: TaskRow) => {
+    const s = toMin(t.start_time);
+    return loginMin != null && s != null && s < loginMin;
+  };
+  const flaggedCount = tasks.filter(flagged).length;
+
   const rows = tasks.length
     ? tasks
-        .map(
-          (t) => `
-        <tr>
+        .map((t) => {
+          const warn = flagged(t);
+          const timeCell = t.start_time
+            ? `${fmt12(t.start_time)} – ${fmt12(t.end_time)}${warn
+                ? `<br/><span style="color:#b91c1c;font-size:11px;font-weight:600;">⚠ before login</span>`
+                : ''}`
+            : '—';
+          return `
+        <tr${warn ? ' style="background:#fff7ed;"' : ''}>
           <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.client_name)}</td>
           <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.project_name)}</td>
           <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.activity_name)}</td>
           <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.task_title)}</td>
+          <td style="padding:6px 10px;border:1px solid #e5e7eb;white-space:nowrap;">${timeCell}</td>
           <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right;">${t.hours_spent}</td>
-        </tr>`,
-        )
+        </tr>`;
+        })
         .join('')
-    : `<tr><td colspan="5" style="padding:12px;text-align:center;color:#6b7280;border:1px solid #e5e7eb;">
+    : `<tr><td colspan="6" style="padding:12px;text-align:center;color:#6b7280;border:1px solid #e5e7eb;">
          No tasks submitted yet for today.
        </td></tr>`;
+
+  const mismatchBanner = flaggedCount > 0
+    ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 16px;margin:16px 0;">
+         <strong style="color:#9a3412;">⚠ Time mismatch:</strong>
+         <span style="color:#7c2d12;">
+           ${flaggedCount} task${flaggedCount === 1 ? '' : 's'} below started before your first login
+           (${fmt12(first_login)}). Logging before login is allowed within the grace window, but please
+           confirm the start time${flaggedCount === 1 ? ' is' : 's are'} correct.
+         </span>
+       </div>`
+    : '';
 
   return `
   <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;color:#111827;">
     <h2 style="margin-bottom:4px;">Hi ${escape(name)},</h2>
     <p style="color:#374151;margin-top:0;">Here is your daily task report for <strong>${date}</strong>.</p>
     <div style="background:#f3f4f6;border-radius:8px;padding:12px 16px;margin:16px 0;">
+      <strong>First login:</strong> ${fmt12(first_login)} &nbsp;·&nbsp;
+      <strong>Last logout:</strong> ${fmt12(last_logout)}<br/>
       <strong>Total hours logged today:</strong> ${total_hours.toFixed(2)} h<br/>
       <strong>Tasks submitted:</strong> ${tasks.length}
     </div>
+    ${mismatchBanner}
     <table style="width:100%;border-collapse:collapse;font-size:14px;">
       <thead>
         <tr style="background:#111827;color:#fff;">
@@ -46,6 +99,7 @@ export function employeeDailyReportEmail(opts: {
           <th style="padding:8px 10px;text-align:left;">Project</th>
           <th style="padding:8px 10px;text-align:left;">Activity</th>
           <th style="padding:8px 10px;text-align:left;">Task</th>
+          <th style="padding:8px 10px;text-align:left;">Time</th>
           <th style="padding:8px 10px;text-align:right;">Hours</th>
         </tr>
       </thead>
@@ -104,58 +158,55 @@ export function adminDailySummaryEmail(opts: {
   </div>`;
 }
 
+export interface LoginOverrideRow {
+  name: string;
+  employee_code?: string | null;
+  first_login?: string | null;
+  earliest_task?: string | null;
+  tasks_before_login: number | string;
+}
+
 export function adminDailyDigestEmail(opts: {
   date: string;
   sections: { employee_name: string; total_hours: number; task_count: number; tasks: TaskRow[] }[];
   notSubmitted?: string[];
+  overrides?: LoginOverrideRow[];
   grand_total_hours: number;
   grand_total_tasks: number;
 }) {
-  const { date, sections, notSubmitted = [], grand_total_hours, grand_total_tasks } = opts;
+  const { date, sections, notSubmitted = [], overrides = [], grand_total_hours, grand_total_tasks } = opts;
 
-  const sectionHtml = sections
-    .map((s) => {
-      const table = s.tasks.length
-        ? `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;">
-             <thead>
-               <tr style="background:#374151;color:#fff;">
-                 <th style="padding:6px 10px;text-align:left;">Client</th>
-                 <th style="padding:6px 10px;text-align:left;">Project</th>
-                 <th style="padding:6px 10px;text-align:left;">Activity</th>
-                 <th style="padding:6px 10px;text-align:left;">Task</th>
-                 <th style="padding:6px 10px;text-align:right;">Hours</th>
-               </tr>
-             </thead>
-             <tbody>${s.tasks
-               .map(
-                 (t) => `
-               <tr>
-                 <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.client_name)}</td>
-                 <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.project_name)}</td>
-                 <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.activity_name)}</td>
-                 <td style="padding:6px 10px;border:1px solid #e5e7eb;">${escape(t.task_title)}</td>
-                 <td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:right;">${t.hours_spent}</td>
-               </tr>`,
-               )
-               .join('')}</tbody>
-           </table>`
-        : `<p style="color:#9ca3af;font-size:13px;margin:6px 0 0;">No tasks submitted today.</p>`;
-
-      return `
-        <div style="margin:18px 0;">
-          <div style="border-bottom:2px solid #111827;padding-bottom:4px;">
-            <strong style="font-size:15px;">${escape(s.employee_name)}</strong>
-            <span style="color:#6b7280;font-size:13px;"> — ${s.total_hours.toFixed(2)} h · ${s.task_count} task${s.task_count === 1 ? '' : 's'}</span>
-          </div>
-          ${table}
-        </div>`;
-    })
-    .join('');
+  const overrideHtml = overrides.length
+    ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 16px;margin:16px 0;">
+         <strong style="color:#9a3412;">⚠ Logged tasks before login (${overrides.length}):</strong>
+         <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;">
+           <thead>
+             <tr style="background:#9a3412;color:#fff;">
+               <th style="padding:6px 10px;text-align:left;">Employee</th>
+               <th style="padding:6px 10px;text-align:left;">First login</th>
+               <th style="padding:6px 10px;text-align:left;">Earliest task</th>
+               <th style="padding:6px 10px;text-align:right;">Tasks before login</th>
+             </tr>
+           </thead>
+           <tbody>${overrides
+             .map(
+               (o) => `
+             <tr>
+               <td style="padding:6px 10px;border:1px solid #fed7aa;">${escape(o.name)}${o.employee_code ? ` <span style="color:#9a3412;">(${escape(o.employee_code)})</span>` : ''}</td>
+               <td style="padding:6px 10px;border:1px solid #fed7aa;">${fmt12(o.first_login)}</td>
+               <td style="padding:6px 10px;border:1px solid #fed7aa;">${fmt12(o.earliest_task)}</td>
+               <td style="padding:6px 10px;border:1px solid #fed7aa;text-align:right;">${o.tasks_before_login}</td>
+             </tr>`,
+             )
+             .join('')}</tbody>
+         </table>
+       </div>`
+    : '';
 
   return `
   <div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#111827;">
     <h2 style="margin-bottom:4px;">Team Daily Summary</h2>
-    <p style="color:#374151;margin-top:0;">Detailed employee activity for <strong>${date}</strong>.</p>
+    <p style="color:#374151;margin-top:0;">Compliance summary for <strong>${date}</strong>.</p>
     <div style="background:#f3f4f6;border-radius:8px;padding:12px 16px;margin:16px 0;">
       <strong>Total hours logged:</strong> ${grand_total_hours.toFixed(2)} h<br/>
       <strong>Total tasks:</strong> ${grand_total_tasks}<br/>
@@ -166,8 +217,13 @@ export function adminDailyDigestEmail(opts: {
       <strong style="color:#b91c1c;">Not submitted today (${notSubmitted.length}):</strong>
       <span style="color:#7f1d1d;"> ${notSubmitted.map(escape).join(', ')}</span>
     </div>` : ''}
-    ${sectionHtml}
-    <p style="color:#6b7280;font-size:12px;margin-top:24px;">
+    ${overrideHtml}
+    <p style="margin:20px 0;">
+      <a href="${APP_URL}" style="display:inline-block;background:#7C3AED;color:#ffffff;text-decoration:none;padding:11px 22px;border-radius:8px;font-weight:600;font-size:14px;">
+        Open Employee App for full details →
+      </a>
+    </p>
+    <p style="color:#6b7280;font-size:12px;margin-top:8px;">
       This is an automated summary generated by the Employee App.
     </p>
   </div>`;

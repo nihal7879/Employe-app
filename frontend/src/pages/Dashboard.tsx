@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Briefcase, Users, FolderKanban, AlertTriangle, Clock, CheckCircle2,
@@ -22,7 +23,7 @@ import type { DailyTask } from '../types';
 // Module-level cache keyed by period so navigating away and back to the
 // dashboard paints the last data instantly (stale-while-revalidate) instead of
 // flashing empty cards while the API call is in flight.
-const dashCache: Record<string, { admin: any; ySubmitted: number; yPendingList: any[]; yDate: string }> = {};
+const dashCache: Record<string, { admin: any; ySubmitted: number; yPendingList: any[]; yDate: string; yOverrides: number }> = {};
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16'];
 
@@ -45,6 +46,8 @@ export default function Dashboard() {
   const [ySubmitted, setYSubmitted] = useState(0);
   const [yPendingList, setYPendingList] = useState<any[]>([]);
   const [yDate, setYDate] = useState('');
+  // Yesterday's count of employees who logged tasks before their login (override).
+  const [yOverrides, setYOverrides] = useState(0);
 
   useEffect(() => {
     if (isAdmin) {
@@ -56,6 +59,7 @@ export default function Dashboard() {
         setYSubmitted(cached.ySubmitted);
         setYPendingList(cached.yPendingList);
         setYDate(cached.yDate);
+        setYOverrides(cached.yOverrides);
       } else {
         setAdmin(null);
       }
@@ -70,14 +74,17 @@ export default function Dashboard() {
         api.get('/analytics/dashboard', { params: { period } }),
         api.get('/reports/daily', { params: { type: 'pending',  date: y } }),
         api.get('/reports/daily', { params: { type: 'employee', date: y } }),
+        api.get('/audit/login-mismatches', { params: { date: y } }),
       ])
-        .then(([dash, pending, submitted]) => {
+        .then(([dash, pending, submitted, overrides]) => {
           const pendingList = Array.isArray(pending.data) ? pending.data : [];
           const submittedCount = Array.isArray(submitted.data) ? submitted.data.length : 0;
+          const overrideCount = Array.isArray(overrides.data) ? overrides.data.length : 0;
           setAdmin(dash.data);
           setYPendingList(pendingList);
           setYSubmitted(submittedCount);
-          dashCache[period] = { admin: dash.data, ySubmitted: submittedCount, yPendingList: pendingList, yDate: y };
+          setYOverrides(overrideCount);
+          dashCache[period] = { admin: dash.data, ySubmitted: submittedCount, yPendingList: pendingList, yDate: y, yOverrides: overrideCount };
         })
         .catch(() => {});
     } else {
@@ -275,6 +282,20 @@ export default function Dashboard() {
                       <div className="text-xl font-bold text-rose-700 dark:text-rose-300 tabular-nums">{pendingCount}</div>
                     </div>
                   </div>
+                  {/* Override: who logged tasks before their login time yesterday. */}
+                  <Link
+                    to={`/admin/login-mismatches?date=${yDate}`}
+                    className={`mt-2 flex items-center justify-between rounded-xl px-3 py-2 border transition-colors ${
+                      yOverrides > 0
+                        ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/15'
+                        : 'bg-slate-50 dark:bg-white/[0.04] border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${yOverrides > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                      <AlertTriangle size={13} /> Logged before login
+                    </span>
+                    <span className={`text-sm font-bold tabular-nums ${yOverrides > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>{yOverrides} →</span>
+                  </Link>
                 </>
               );
             })()}

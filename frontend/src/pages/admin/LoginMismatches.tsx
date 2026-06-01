@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, LogIn, LogOut, Search, Users } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, LogIn, Search } from 'lucide-react';
 import { api } from '../../lib/api';
 import { TableSkeleton } from '../../components/Skeleton';
 import DatePicker from '../../components/ui/DatePicker';
 
-interface PresentRow {
+interface MismatchRow {
   id: number;
   name: string;
   email: string;
   employee_code: string;
   department_name?: string | null;
   first_login?: string | null;
-  last_logout?: string | null;
+  earliest_task?: string | null;
+  tasks_before_login: number;
 }
 
 function todayStr() {
@@ -21,30 +22,35 @@ function todayStr() {
   const dd = String(d.getDate()).padStart(2, '0');
   return `${d.getFullYear()}-${m}-${dd}`;
 }
-
-function fmtTime(s?: string | null) {
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${dd}`;
+}
+// "HH:MM[:SS]" -> "h:MM AM/PM"
+function fmt12(s?: string | null) {
   if (!s) return '—';
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return '—';
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const m = String(s).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return '—';
+  const h = Number(m[1]);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]} ${period}`;
 }
 
-export default function TodayPresent() {
+export default function LoginMismatches() {
   const navigate = useNavigate();
-  const [date, setDate] = useState(todayStr());
-  const [rows, setRows] = useState<PresentRow[]>([]);
+  const [params] = useSearchParams();
+  const [date, setDate] = useState(params.get('date') || yesterdayStr());
+  const [rows, setRows] = useState<MismatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const isToday = date === todayStr();
-
-  // Open the employee's day view in Reports for the selected date.
-  const openEmployeeDay = (empId: number) =>
-    navigate(`/reports?tab=day-view&employee=${empId}&date=${date}`);
-
   useEffect(() => {
     setLoading(true);
-    api.get('/audit/present', { params: { date } })
+    api.get('/audit/login-mismatches', { params: { date } })
       .then((r) => setRows(r.data || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
@@ -62,6 +68,9 @@ export default function TodayPresent() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
+  const openEmployeeDay = (empId: number) =>
+    navigate(`/reports?tab=day-view&employee=${empId}&date=${date}`);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -69,31 +78,20 @@ export default function TodayPresent() {
           <ArrowLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold">{isToday ? 'Present today' : 'Presence'}</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{dateLabel} · {filtered.length} employee{filtered.length === 1 ? '' : 's'} logged in</p>
+          <h1 className="text-2xl font-bold">Logged before login</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{dateLabel} · {filtered.length} employee{filtered.length === 1 ? '' : 's'} overrode the login window</p>
         </div>
-        <span className="ml-auto inline-flex items-center gap-1.5 pill-ok"><Users size={12} /> {filtered.length}</span>
+        <span className="ml-auto inline-flex items-center gap-1.5 pill-warn"><AlertTriangle size={12} /> {filtered.length}</span>
       </div>
 
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
-          {/* Pick any date to see who logged in / out that day. */}
           <div className="w-full sm:w-52">
-            <DatePicker
-              value={date}
-              clearable={false}
-              maxDate={todayStr()}
-              onChange={(v) => setDate(v || todayStr())}
-            />
+            <DatePicker value={date} clearable={false} maxDate={todayStr()} onChange={(v) => setDate(v || yesterdayStr())} />
           </div>
           <div className="relative w-full sm:max-w-sm">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              className="!pl-9"
-              placeholder="Search by name, email, code, department…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <input className="!pl-9" placeholder="Search by name, email, code, department…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -102,14 +100,14 @@ export default function TodayPresent() {
               <tr>
                 <th className="table-th">Code</th>
                 <th className="table-th">Name</th>
-                <th className="table-th">Email</th>
                 <th className="table-th">Department</th>
                 <th className="table-th">First login</th>
-                <th className="table-th">Last logout</th>
+                <th className="table-th">Earliest task</th>
+                <th className="table-th text-right">Tasks before login</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <TableSkeleton rows={6} cols={7} />}
+              {loading && <TableSkeleton rows={6} cols={6} />}
               {!loading && filtered.map((r) => (
                 <tr key={r.id}
                   onClick={() => openEmployeeDay(r.id)}
@@ -117,28 +115,18 @@ export default function TodayPresent() {
                   className="cursor-pointer hover:bg-slate-50 dark:hover:bg-white/[0.03]">
                   <td className="table-td">{r.employee_code}</td>
                   <td className="table-td font-medium text-slate-900 dark:text-white">{r.name}</td>
-                  <td className="table-td">{r.email}</td>
                   <td className="table-td">{r.department_name || '—'}</td>
                   <td className="table-td">
                     <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-                      <LogIn size={13} /> {fmtTime(r.first_login)}
+                      <LogIn size={13} /> {fmt12(r.first_login)}
                     </span>
                   </td>
-                  <td className="table-td">
-                    {r.last_logout ? (
-                      <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
-                        <LogOut size={13} /> {fmtTime(r.last_logout)}
-                      </span>
-                    ) : isToday ? (
-                      <span className="pill-ok">Still online</span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
+                  <td className="table-td text-amber-700 dark:text-amber-400 font-medium">{fmt12(r.earliest_task)}</td>
+                  <td className="table-td text-right tabular-nums font-semibold">{r.tasks_before_login}</td>
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={6} className="table-td text-center text-slate-400 py-8">No one logged in {search ? 'matching that filter' : isToday ? 'yet today' : 'on this date'}.</td></tr>
+                <tr><td colSpan={6} className="table-td text-center text-slate-400 py-8">No one logged tasks before their login {search ? 'matching that filter' : 'on this date'}.</td></tr>
               )}
             </tbody>
           </table>

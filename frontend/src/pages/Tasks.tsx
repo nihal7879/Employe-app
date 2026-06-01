@@ -76,15 +76,15 @@ export default function Tasks() {
   // backdated date (that day's floor is enforced server-side instead).
   const timeFloor = canLogAnytime || form.task_date !== todayStr() ? null : dayStart;
 
-  // Auto-calculate hours from start/end time
+  // Auto-calculate hours from start/end time. End must be after start — a
+  // non-positive span is an input error (NOT an overnight task; daily tasks
+  // live within one work day), so we blank the hours and let submit() block it.
   useEffect(() => {
     if (form.start_time && form.end_time) {
       const [sh, sm] = form.start_time.split(':').map(Number);
       const [eh, em] = form.end_time.split(':').map(Number);
-      let mins = (eh * 60 + em) - (sh * 60 + sm);
-      if (mins < 0) mins += 24 * 60; // overnight
-      const hrs = (mins / 60).toFixed(2);
-      setForm((f) => ({ ...f, hours_spent: hrs }));
+      const mins = (eh * 60 + em) - (sh * 60 + sm);
+      setForm((f) => ({ ...f, hours_spent: mins > 0 ? (mins / 60).toFixed(2) : '' }));
     }
     // eslint-disable-next-line
   }, [form.start_time, form.end_time]);
@@ -97,6 +97,9 @@ export default function Tasks() {
     }
     if (!form.start_time || !form.end_time) {
       toast.error('Enter start and end time'); return;
+    }
+    if (form.end_time <= form.start_time) {
+      toast.error('End time must be after start time'); return;
     }
     if (!form.task_title.trim()) {
       toast.error('Enter a task title'); return;

@@ -404,8 +404,8 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     if (!startTime || !endTime) return null;
     const [sh, sm] = startTime.split(':').map(Number);
     const [eh, em] = endTime.split(':').map(Number);
-    let mins = (eh * 60 + em) - (sh * 60 + sm);
-    if (mins < 0) mins += 24 * 60;
+    const mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (mins <= 0) return null; // end before/equal start → invalid, not overnight
     return Math.round((mins / 60) * 100) / 100;
   }, [startTime, endTime]);
 
@@ -415,6 +415,9 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     if (!progress) { toast.error('Select a progress status'); return; }
     if ((startTime && !endTime) || (!startTime && endTime)) {
       toast.error('Set both start and end time'); return;
+    }
+    if (startTime && endTime && endTime <= startTime) {
+      toast.error('End time must be after start time'); return;
     }
     setSaving(true);
     try {
