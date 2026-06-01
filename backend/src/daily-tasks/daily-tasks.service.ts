@@ -143,6 +143,12 @@ export class DailyTasksService {
     // Enforce the today-only rule unless the employee may backdate.
     this.assertDateAllowed(taskDate, perms.allow_backdated_tasks);
 
+    // End must come after start — a non-positive span is an input error, not
+    // an overnight task (daily tasks live within a single work day).
+    if (dto.start_time && dto.end_time && dto.end_time <= dto.start_time) {
+      throw new ConflictException('End time must be after start time.');
+    }
+
     // Reject if another non-deleted task for this employee on the same date
     // overlaps the new [start_time, end_time) window. Two ranges overlap when
     // existing.start_time < new.end_time AND existing.end_time > new.start_time.
@@ -209,6 +215,15 @@ export class DailyTasksService {
       }
     }
 
+    // End must come after start, using the effective (post-edit) times. Compare
+    // at minute granularity since stored times carry seconds ("HH:MM:SS") while
+    // edits arrive as "HH:MM".
+    const effStart = (dto.start_time ?? existing.start_time) as string | null;
+    const effEnd = (dto.end_time ?? existing.end_time) as string | null;
+    if (effStart && effEnd && String(effEnd).slice(0, 5) <= String(effStart).slice(0, 5)) {
+      throw new ConflictException('End time must be after start time.');
+    }
+
     const auditFields = ctx ? {
       updated_ip: ctx.ip,
       updated_gps: ctx.gps,
@@ -235,6 +250,42 @@ export class DailyTasksService {
   }
 
   // ------- Helpers used by reports & scheduler -------
+
+  // Employees who logged ≥1 task starting BEFORE their first login of the day
+  // (the login-grace override). Used by the admin digest email and the
+  // compliance view. Returns name, code, first login, earliest pre-login start,
+  // and the count of such tasks.
+  async getLoginMismatches(date: string) {
+    const firstLogins = this.db('audit_logs')
+      .where('event_type', 'Login')
+      .whereRaw('DATE(created_at) = ?', [date])
+      .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
+      .groupBy('employee_id')
+      .select('employee_id')
+      .min({ first_login: 'created_at' })
+      .as('fl');
+
+    return this.db('daily_tasks as dt')
+      .join('employees as e', 'e.id', 'dt.employee_id')
+      .leftJoin('departments as d', 'e.department_id', 'd.id')
+      .join(firstLogins, 'fl.employee_id', 'dt.employee_id')
+      .where('dt.is_deleted', false)
+      .andWhere('dt.task_date', date)
+      .whereNotNull('dt.start_time')
+      .whereRaw('dt.start_time < TIME(fl.first_login)')
+      .groupBy('e.id', 'e.name', 'e.employee_code', 'e.email', 'd.department_name')
+      .select(
+        'e.id',
+        'e.name',
+        'e.employee_code',
+        'e.email',
+        'd.department_name',
+        this.db.raw('TIME(MIN(fl.first_login)) as first_login'),
+        this.db.raw('MIN(dt.start_time) as earliest_task'),
+      )
+      .count({ tasks_before_login: 'dt.id' })
+      .orderBy('tasks_before_login', 'desc');
+  }
 
   async getEmployeeReport(employee_id: number, date: string) {
     const rows = await this.base()

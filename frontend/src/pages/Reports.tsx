@@ -52,8 +52,9 @@ export default function Reports() {
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
 
-  // Day view state — 'all' = aggregate across every employee (default)
-  const [dayEmployee, setDayEmployee] = useState('all');
+  // Day view state — 'all' = aggregate across every employee (default).
+  // Deep-linkable via ?employee=<id> (e.g. from the Present-today page).
+  const [dayEmployee, setDayEmployee] = useState(params.get('employee') || 'all');
 
   useEffect(() => {
     if (tab !== 'drilldown' && tab !== 'day-view') return;

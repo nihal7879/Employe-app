@@ -142,6 +142,7 @@ export default function DatePicker({
   const popover = (
     <motion.div
       ref={popRef}
+      data-datepicker-popover
       initial={{ opacity: 0, y: 6, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 6, scale: 0.98 }}

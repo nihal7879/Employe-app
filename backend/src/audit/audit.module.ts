@@ -195,6 +195,44 @@ class AuditService {
       .orderByRaw("MIN(CASE WHEN a.event_type = 'Login' THEN a.created_at END) asc");
   }
 
+  // Compliance: employees who logged one or more tasks that START BEFORE their
+  // first login of the day (the login-grace "override"). For each such employee
+  // on the given date, returns their first login, how many tasks predate it,
+  // and the earliest such start time — so an admin can see who back-dated.
+  async loginMismatches(date: string) {
+    // First login per employee on the date, restricted to the day-start window.
+    const firstLogins = this.db('audit_logs')
+      .where('event_type', 'Login')
+      .whereRaw('DATE(created_at) = ?', [date])
+      .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
+      .groupBy('employee_id')
+      .select('employee_id')
+      .min({ first_login: 'created_at' })
+      .as('fl');
+
+    return this.db('daily_tasks as dt')
+      .join('employees as e', 'e.id', 'dt.employee_id')
+      .leftJoin('departments as d', 'e.department_id', 'd.id')
+      .join(firstLogins, 'fl.employee_id', 'dt.employee_id')
+      .where('dt.is_deleted', false)
+      .andWhere('dt.task_date', date)
+      .whereNotNull('dt.start_time')
+      // start_time ("HH:MM:SS") strictly before the login's time-of-day.
+      .whereRaw('dt.start_time < TIME(fl.first_login)')
+      .groupBy('e.id', 'e.name', 'e.employee_code', 'e.email', 'd.department_name')
+      .select(
+        'e.id',
+        'e.name',
+        'e.employee_code',
+        'e.email',
+        'd.department_name',
+        this.db.raw('TIME(MIN(fl.first_login)) as first_login'),
+        this.db.raw('MIN(dt.start_time) as earliest_task'),
+      )
+      .count({ tasks_before_login: 'dt.id' })
+      .orderBy('tasks_before_login', 'desc');
+  }
+
   // Login count per employee — useful for admin dashboard
   async loginCounts(params: { from?: string; to?: string }) {
     let q = this.db('audit_logs')
@@ -267,6 +305,15 @@ class AuditController {
   present(@Query('date') date: string) {
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
     return this.s.presentOnDate(date);
+  }
+
+  // Employees who logged tasks starting before their first login on a date
+  // (the login-grace override). Admin-only — powers the compliance view.
+  @Get('login-mismatches')
+  @Roles('Admin')
+  loginMismatches(@Query('date') date: string) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+    return this.s.loginMismatches(date);
   }
 
   // Per-day in/out times across a date range. Used by the activity calendar

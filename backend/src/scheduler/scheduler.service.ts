@@ -5,6 +5,7 @@ import { KNEX_CONNECTION } from '../database/knex.module';
 import { DailyTasksService } from '../daily-tasks/daily-tasks.service';
 import { EmailService } from '../email/email.service';
 import { adminDailyDigestEmail, employeeDailyReportEmail, reminderEmail } from '../email/templates';
+import { APP_CONFIG } from '../config/app-config';
 
 @Injectable()
 export class SchedulerService {
@@ -30,12 +31,47 @@ export class SchedulerService {
     const admin = process.env.ADMIN_EMAIL;
     if (!admin) return;
     const digest = await this.tasks.getAdminDailyDigest(date);
+    const overrides = await this.tasks.getLoginMismatches(date);
     await this.mail.send({
       to: admin,
       subject: `Team Daily Summary — ${date}`,
       type: 'Daily Summary',
-      html: adminDailyDigestEmail(digest),
+      html: adminDailyDigestEmail({ ...digest, overrides }),
     });
+  }
+
+  // Convert a mysql2 DATETIME (returned as a JS Date in server-local time, or
+  // sometimes a string) to "HH:MM:SS". Mirrors the audit module's toHMS so the
+  // times in the email match what the app shows elsewhere.
+  private hms(ts: unknown): string | null {
+    if (ts instanceof Date) {
+      const h = String(ts.getHours()).padStart(2, '0');
+      const mi = String(ts.getMinutes()).padStart(2, '0');
+      const s = String(ts.getSeconds()).padStart(2, '0');
+      return `${h}:${mi}:${s}`;
+    }
+    if (ts == null) return null;
+    const m = String(ts).match(/(\d{2}):(\d{2}):(\d{2})/);
+    return m ? `${m[1]}:${m[2]}:${m[3]}` : null;
+  }
+
+  // First login (within the day-start window) and last logout for the day.
+  private async dayBounds(employee_id: number, date: string) {
+    const login = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Login' })
+      .whereRaw('DATE(created_at) = ?', [date])
+      .whereRaw('TIME(created_at) BETWEEN ? AND ?', [APP_CONFIG.dayStart.earliest, APP_CONFIG.dayStart.latest])
+      .min({ ts: 'created_at' })
+      .first();
+    const logout = await this.db('audit_logs')
+      .where({ employee_id, event_type: 'Logout' })
+      .whereRaw('DATE(created_at) = ?', [date])
+      .max({ ts: 'created_at' })
+      .first();
+    return {
+      first_login: this.hms(login?.ts),
+      last_logout: this.hms(logout?.ts),
+    };
   }
 
   private async dispatchEmployeeReports(date: string, subject: string) {
@@ -49,6 +85,7 @@ export class SchedulerService {
         const report = await this.tasks.getEmployeeReport(emp.id, date);
         // No submission today → don't send an empty daily report to this person.
         if (!report.tasks || report.tasks.length === 0) continue;
+        const bounds = await this.dayBounds(emp.id, date);
         await this.mail.send({
           to: emp.email,
           subject,
@@ -58,6 +95,8 @@ export class SchedulerService {
             date,
             total_hours: Number(report.total_hours || 0),
             tasks: report.tasks,
+            first_login: bounds.first_login,
+            last_logout: bounds.last_logout,
           }),
         });
       } catch (err: any) {

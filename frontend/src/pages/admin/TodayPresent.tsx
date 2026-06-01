@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, LogIn, LogOut, Search, Users } from 'lucide-react';
 import { api } from '../../lib/api';
 import { TableSkeleton } from '../../components/Skeleton';
@@ -30,12 +30,17 @@ function fmtTime(s?: string | null) {
 }
 
 export default function TodayPresent() {
+  const navigate = useNavigate();
   const [date, setDate] = useState(todayStr());
   const [rows, setRows] = useState<PresentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   const isToday = date === todayStr();
+
+  // Open the employee's day view in Reports for the selected date.
+  const openEmployeeDay = (empId: number) =>
+    navigate(`/reports?tab=day-view&employee=${empId}&date=${date}`);
 
   useEffect(() => {
     setLoading(true);
@@ -106,7 +111,10 @@ export default function TodayPresent() {
             <tbody>
               {loading && <TableSkeleton rows={6} cols={7} />}
               {!loading && filtered.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                <tr key={r.id}
+                  onClick={() => openEmployeeDay(r.id)}
+                  title="View this employee’s day"
+                  className="cursor-pointer hover:bg-slate-50 dark:hover:bg-white/[0.03]">
                   <td className="table-td">{r.employee_code}</td>
                   <td className="table-td font-medium text-slate-900 dark:text-white">{r.name}</td>
                   <td className="table-td">{r.email}</td>

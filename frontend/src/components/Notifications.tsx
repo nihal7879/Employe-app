@@ -4,6 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, CheckCheck, Clock, Inbox, XCircle } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
+import DatePicker from './ui/DatePicker';
+
+function todayStr() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${dd}`;
+}
 
 interface EmailLog {
   id: number;
@@ -23,13 +31,16 @@ export default function Notifications() {
   const [open, setOpen] = useState(false);
   const [logs, setLogs] = useState<EmailLog[]>([]);
   const [unread, setUnread] = useState(0);
+  // Admin-only: filter the feed to a single day. Empty = recent activity.
+  const [date, setDate] = useState('');
   const ctrl = 'relative h-10 w-10 rounded-xl flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 dark:bg-white/[0.04] dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.10] dark:hover:text-white transition-colors';
 
   const load = async () => {
     try {
-      // Employees get their own notifications; admins get the full feed.
+      // Employees get their own notifications; admins get the full feed,
+      // optionally filtered to a single day via the calendar.
       const r = isAdmin
-        ? await api.get('/email-logs', { params: { limit: 10 } })
+        ? await api.get('/email-logs', { params: { date: date || undefined, limit: date ? 100 : 10 } })
         : await api.get('/email-logs/mine');
       setLogs(r.data || []);
     } catch { setLogs([]); }
@@ -48,7 +59,7 @@ export default function Notifications() {
     const t = setInterval(load, 60_000); // refresh every minute
     return () => clearInterval(t);
     // eslint-disable-next-line
-  }, [isAdmin, user?.email]);
+  }, [isAdmin, user?.email, date]);
 
   // Mark as "read" when panel opens — local only (no backend field yet)
   useEffect(() => {
@@ -66,7 +77,12 @@ export default function Notifications() {
   // Close on outside click / Esc
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as HTMLElement;
+      // The date calendar opens in a portal on <body>, outside this panel.
+      // Don't treat clicks inside it as "outside" — that would close the panel
+      // and take the calendar with it.
+      if (t.closest?.('[data-datepicker-popover]')) return;
+      if (ref.current && !ref.current.contains(t)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('mousedown', onClick);
@@ -116,13 +132,29 @@ export default function Notifications() {
             <div className="px-4 py-3 border-b border-slate-100 dark:border-white/10 flex items-center justify-between">
               <div>
                 <div className="font-semibold text-slate-900 dark:text-white">Notifications</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">Recent email activity</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {isAdmin && date
+                    ? new Date(date + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+                    : 'Recent email activity'}
+                </div>
               </div>
               <button
                 onClick={() => { setOpen(false); nav(isAdmin ? '/admin/email-logs' : '/notifications'); }}
                 className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:text-brand-700"
               >View all</button>
             </div>
+
+            {/* Admin: pick a day to see that day's email activity (clear = recent). */}
+            {isAdmin && (
+              <div className="px-4 py-2.5 border-b border-slate-100 dark:border-white/10">
+                <DatePicker
+                  value={date}
+                  onChange={(v) => setDate(v)}
+                  placeholder="Filter by date"
+                  maxDate={todayStr()}
+                />
+              </div>
+            )}
 
             <div className="max-h-96 overflow-y-auto">
               {logs.length === 0 ? (

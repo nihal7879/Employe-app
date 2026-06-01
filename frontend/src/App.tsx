@@ -17,6 +17,7 @@ import TodayPresent from './pages/admin/TodayPresent';
 import TodayClients from './pages/admin/TodayClients';
 import TodayProjects from './pages/admin/TodayProjects';
 import YesterdayPending from './pages/admin/YesterdayPending';
+import LoginMismatches from './pages/admin/LoginMismatches';
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/admin/today-clients" element={<TodayClients />} />
             <Route path="/admin/today-projects" element={<TodayProjects />} />
             <Route path="/admin/yesterday-pending" element={<YesterdayPending />} />
+            <Route path="/admin/login-mismatches" element={<LoginMismatches />} />
           </Route>
         </Route>
       </Route>
