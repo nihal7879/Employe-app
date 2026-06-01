@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CreateEmployeeDto, UpdateEmployeeDto } from './dto/employee.dto';
+import { CreateEmployeeDto, UpdateEmployeeDto, UpdatePermissionsDto } from './dto/employee.dto';
 import { EmployeesService } from './employees.service';
 
 @Controller('employees')
@@ -34,6 +34,12 @@ export class EmployeesController {
   @Roles('Admin')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEmployeeDto) {
     return this.service.update(id, dto);
+  }
+
+  @Patch(':id/permissions')
+  @Roles('Admin')
+  setPermissions(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePermissionsDto) {
+    return this.service.setPermissions(id, dto);
   }
 
   @Delete(':id')

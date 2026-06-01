@@ -3,6 +3,8 @@ export interface User {
   name: string;
   email: string;
   role: 'Admin' | 'Employee';
+  allow_backdated_tasks?: boolean;
+  allow_log_anytime?: boolean;
 }
 
 export interface Employee {
@@ -19,6 +21,8 @@ export interface Employee {
   phone?: string;
   profile_image?: string;
   is_active: boolean;
+  allow_backdated_tasks?: boolean;
+  allow_log_anytime?: boolean;
 }
 
 export interface Client {

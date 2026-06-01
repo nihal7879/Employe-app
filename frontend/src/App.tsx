@@ -11,6 +11,7 @@ import Employees from './pages/admin/Employees';
 import Clients from './pages/admin/Clients';
 import Projects from './pages/admin/Projects';
 import Activities from './pages/admin/Activities';
+import Permissions from './pages/admin/Permissions';
 import EmailLogs from './pages/admin/EmailLogs';
 import TodayPresent from './pages/admin/TodayPresent';
 import TodayClients from './pages/admin/TodayClients';
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/admin/clients" element={<Clients />} />
             <Route path="/admin/projects" element={<Projects />} />
             <Route path="/admin/activities" element={<Activities />} />
+            <Route path="/admin/permissions" element={<Permissions />} />
             <Route path="/admin/email-logs" element={<EmailLogs />} />
             <Route path="/admin/today-present" element={<TodayPresent />} />
             <Route path="/admin/today-clients" element={<TodayClients />} />

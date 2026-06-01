@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
   FolderKanban, ListChecks, Mail, ChevronLeft, ChevronDown, CalendarSearch,
-  Timer, Bell, Database,
+  Timer, Bell, Database, ShieldCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -47,6 +47,7 @@ const items: Item[] = [
       { to: '/admin/projects',   icon: FolderKanban, label: 'Projects' },
       { to: '/admin/employees',  icon: Users,        label: 'Employees' },
       { to: '/admin/activities', icon: ListChecks,   label: 'Activities' },
+      // { to: '/admin/permissions', icon: ShieldCheck, label: 'Permissions' },
     ],
   },
   { to: '/admin/email-logs', icon: Mail,            label: 'Notifications', admin: true,  hideForAdmin: false },

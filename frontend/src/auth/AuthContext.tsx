@@ -48,7 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Verify the cookie is still valid (silently)
     api.get('/auth/me').then((r) => {
-      const u = { id: r.data.id, name: r.data.name, email: r.data.email, role: r.data.role };
+      const u = {
+        id: r.data.id, name: r.data.name, email: r.data.email, role: r.data.role,
+        allow_backdated_tasks: !!r.data.allow_backdated_tasks,
+        allow_log_anytime: !!r.data.allow_log_anytime,
+      };
       setUser(u);
       setStoredUser(JSON.stringify(u));
     }).catch(() => {

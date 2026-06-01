@@ -43,6 +43,8 @@ export class AuthService {
         'employees.email',
         'employees.role_id',
         'roles.role_name as role',
+        'employees.allow_backdated_tasks',
+        'employees.allow_log_anytime',
       )
       .first();
 
@@ -67,7 +69,21 @@ export class AuthService {
         name: employee.name,
         email: employee.email,
         role: employee.role,
+        allow_backdated_tasks: !!employee.allow_backdated_tasks,
+        allow_log_anytime: !!employee.allow_log_anytime,
       },
+    };
+  }
+
+  // Current task-logging permission flags for an employee, read fresh from the
+  // DB so an admin's toggle takes effect without the user re-logging in.
+  async permissionsFor(id: number) {
+    const row = await this.db('employees')
+      .where({ id })
+      .first('allow_backdated_tasks', 'allow_log_anytime');
+    return {
+      allow_backdated_tasks: !!row?.allow_backdated_tasks,
+      allow_log_anytime: !!row?.allow_log_anytime,
     };
   }
 

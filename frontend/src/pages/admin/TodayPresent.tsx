@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, LogIn, LogOut, Search, Users } from 'lucide-react';
 import { api } from '../../lib/api';
 import { TableSkeleton } from '../../components/Skeleton';
+import DatePicker from '../../components/ui/DatePicker';
 
 interface PresentRow {
   id: number;
@@ -14,34 +15,35 @@ interface PresentRow {
   last_logout?: string | null;
 }
 
+function todayStr() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${dd}`;
+}
+
 function fmtTime(s?: string | null) {
   if (!s) return '—';
   const d = new Date(s);
   if (isNaN(d.getTime())) return '—';
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
-function fmtDuration(a?: string | null, b?: string | null) {
-  if (!a) return '—';
-  const start = new Date(a).getTime();
-  const end = b ? new Date(b).getTime() : Date.now();
-  const ms = Math.max(0, end - start);
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  return `${h}h ${m}m${b ? '' : ' (still in)'}`;
-}
 
 export default function TodayPresent() {
+  const [date, setDate] = useState(todayStr());
   const [rows, setRows] = useState<PresentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
+  const isToday = date === todayStr();
+
   useEffect(() => {
     setLoading(true);
-    api.get('/analytics/dashboard', { params: { period: 'today' } })
-      .then((r) => setRows(r.data?.present_today || []))
+    api.get('/audit/present', { params: { date } })
+      .then((r) => setRows(r.data || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [date]);
 
   const filtered = rows.filter((r) =>
     !search
@@ -51,7 +53,7 @@ export default function TodayPresent() {
         ),
   );
 
-  const todayLabel = new Date().toLocaleDateString(undefined, {
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString(undefined, {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
@@ -62,21 +64,32 @@ export default function TodayPresent() {
           <ArrowLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold">Present today</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{todayLabel} · {filtered.length} employee{filtered.length === 1 ? '' : 's'} logged in</p>
+          <h1 className="text-2xl font-bold">{isToday ? 'Present today' : 'Presence'}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{dateLabel} · {filtered.length} employee{filtered.length === 1 ? '' : 's'} logged in</p>
         </div>
         <span className="ml-auto inline-flex items-center gap-1.5 pill-ok"><Users size={12} /> {filtered.length}</span>
       </div>
 
       <div className="card p-4">
-        <div className="relative max-w-sm mb-3">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-          <input
-            className="!pl-9"
-            placeholder="Search by name, email, code, department…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+          {/* Pick any date to see who logged in / out that day. */}
+          <div className="w-full sm:w-52">
+            <DatePicker
+              value={date}
+              clearable={false}
+              maxDate={todayStr()}
+              onChange={(v) => setDate(v || todayStr())}
+            />
+          </div>
+          <div className="relative w-full sm:max-w-sm">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              className="!pl-9"
+              placeholder="Search by name, email, code, department…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -108,14 +121,16 @@ export default function TodayPresent() {
                       <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
                         <LogOut size={13} /> {fmtTime(r.last_logout)}
                       </span>
-                    ) : (
+                    ) : isToday ? (
                       <span className="pill-ok">Still online</span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
                     )}
                   </td>
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={6} className="table-td text-center text-slate-400 py-8">No one logged in {search ? 'matching that filter' : 'yet today'}.</td></tr>
+                <tr><td colSpan={6} className="table-td text-center text-slate-400 py-8">No one logged in {search ? 'matching that filter' : isToday ? 'yet today' : 'on this date'}.</td></tr>
               )}
             </tbody>
           </table>

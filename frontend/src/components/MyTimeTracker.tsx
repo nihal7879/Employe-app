@@ -156,7 +156,8 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
   useEffect(() => {
     if (adminView || employeeId) return; // employees viewing their own tracker only
     api.get('/audit/day-start', { params: { date: todayStr() } })
-      .then((r) => setTodayDayStart(r.data?.start_time || null))
+      // earliest_task_time = login − grace window; the floor the edit picker enforces.
+      .then((r) => setTodayDayStart(r.data?.earliest_task_time || null))
       .catch(() => setTodayDayStart(null));
   }, [adminView, employeeId]);
 
@@ -437,7 +438,8 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
       onSaved();
     } catch (err: any) {
       if (err?.reason || err?.isNetworkError) return; // interceptor already showed the toast
-      toast.error(err.response?.data?.message?.[0] || err.response?.data?.message || 'Failed to update');
+      const msg = err.response?.data?.message;
+      toast.error((Array.isArray(msg) ? msg[0] : msg) || 'Failed to update');
     } finally {
       setSaving(false);
     }
