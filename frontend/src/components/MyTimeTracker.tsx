@@ -95,9 +95,11 @@ function groupHours(tasks: DailyTask[], field: keyof DailyTask, fallback: string
   return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
 }
 
-export default function MyTimeTracker({ employeeId, adminView = false }: { employeeId?: string; adminView?: boolean }) {
+export default function MyTimeTracker({ employeeId, adminView = false, initialDate: initialDateProp }: { employeeId?: string; adminView?: boolean; initialDate?: string }) {
   const [searchParams] = useSearchParams();
-  const initialDate = searchParams.get('date');
+  // An explicit prop (e.g. the date picked on the Reports daily tab) takes
+  // precedence over the ?date= deep-link param.
+  const initialDate = initialDateProp ?? searchParams.get('date');
   // Honor ?date=YYYY-MM-DD deep links (e.g. from the dashboard calendar) by
   // opening directly on that date in Day view.
   const [view, setView] = useState<View>('day');
@@ -305,8 +307,8 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
                   </span>
                 </div>
                 {view === 'day'
-                  ? <DayTimeline tasks={g.tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={undefined} />
-                  : <DaySections tasks={g.tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={undefined} />}
+                  ? <DayTimeline tasks={g.tasks} projectColors={projectColors} onDelete={undefined} onView={setViewTask} onEdit={undefined} />
+                  : <DaySections tasks={g.tasks} projectColors={projectColors} onDelete={undefined} onView={setViewTask} onEdit={undefined} />}
                 {empWork.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                     <BreakdownList title="Hours by client" rows={empByClient} />
@@ -320,8 +322,8 @@ export default function MyTimeTracker({ employeeId, adminView = false }: { emplo
       ) : (
         <div className="space-y-6">
           {view === 'day'
-            ? <DayTimeline tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={employeeId ? undefined : setEditTask} />
-            : <DaySections tasks={tasks} projectColors={projectColors} onDelete={setConfirmId} onView={setViewTask} onEdit={employeeId ? undefined : setEditTask} />}
+            ? <DayTimeline tasks={tasks} projectColors={projectColors} onDelete={employeeId ? undefined : setConfirmId} onView={setViewTask} onEdit={employeeId ? undefined : setEditTask} />
+            : <DaySections tasks={tasks} projectColors={projectColors} onDelete={employeeId ? undefined : setConfirmId} onView={setViewTask} onEdit={employeeId ? undefined : setEditTask} />}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
             <BreakdownList title="Hours by client" rows={byClient} />
             <BreakdownList title="Hours by activity" rows={byActivity} />
@@ -833,10 +835,10 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                     {s != null && e != null ? `${fmtTime(s)} – ${fmtTime(e)}` : '—'}
                   </td>
                   <td className="table-td text-sm text-slate-400">—</td>
-                  <td className="table-td text-right">
-                    <div className="flex items-center justify-end gap-2.5">
-                      {onDelete && (
-                        <button onClick={() => onDelete(t.id)} className="text-slate-400 hover:text-rose-500 transition-colors" title="Delete break">
+                  <td className="table-td text-left">
+                    <div className="flex items-center justify-start gap-2.5">
+                      {onDelete && t.task_date === today && (
+                        <button onClick={() => onDelete(t.id)} className="text-slate-400 hover:text-rose-500 transition-colors" title="Delete today's break">
                           <Trash2 size={16} />
                         </button>
                       )}
@@ -890,8 +892,8 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                 <td className="table-td">
                   <ProgressBadge status={t.progress_status} />
                 </td>
-                <td className="table-td text-right">
-                  <div className="flex items-center justify-end gap-2.5">
+                <td className="table-td text-left">
+                  <div className="flex items-center justify-start gap-2.5">
                     {onView && (
                       <button onClick={() => onView(t)} className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors" title="View task details">
                         <Eye size={16} />
@@ -902,8 +904,8 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                         <Pencil size={14} />
                       </button>
                     )}
-                    {onDelete && (
-                      <button onClick={() => onDelete(t.id)} className="text-slate-400 hover:text-rose-500 transition-colors" title="Delete task">
+                    {onDelete && t.task_date === today && (
+                      <button onClick={() => onDelete(t.id)} className="text-slate-400 hover:text-rose-500 transition-colors" title="Delete today's task">
                         <Trash2 size={16} />
                       </button>
                     )}

@@ -349,6 +349,7 @@ export default function Reports() {
           employees={employees}
           employeeId={dayEmployee}
           setEmployeeId={setDayEmployee}
+          initialDate={date}
         />
       )}
     </div>
@@ -356,11 +357,12 @@ export default function Reports() {
 }
 
 function EmployeeDayView({
-  employees, employeeId, setEmployeeId,
+  employees, employeeId, setEmployeeId, initialDate,
 }: {
   employees: Employee[];
   employeeId: string;
   setEmployeeId: (s: string) => void;
+  initialDate?: string;
 }) {
   return (
     <div className="space-y-4">
@@ -384,7 +386,7 @@ function EmployeeDayView({
         </div>
       </div>
 
-      <MyTimeTracker employeeId={employeeId === 'all' ? undefined : employeeId} adminView />
+      <MyTimeTracker employeeId={employeeId === 'all' ? undefined : employeeId} adminView initialDate={initialDate} />
     </div>
   );
 }
