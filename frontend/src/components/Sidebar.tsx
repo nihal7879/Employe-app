@@ -47,7 +47,7 @@ const items: Item[] = [
       { to: '/admin/projects',   icon: FolderKanban, label: 'Projects' },
       { to: '/admin/employees',  icon: Users,        label: 'Employees' },
       { to: '/admin/activities', icon: ListChecks,   label: 'Activities' },
-      // { to: '/admin/permissions', icon: ShieldCheck, label: 'Permissions' },
+      { to: '/admin/permissions', icon: ShieldCheck, label: 'Permissions' },
     ],
   },
   { to: '/admin/email-logs', icon: Mail,            label: 'Notifications', admin: true,  hideForAdmin: false },

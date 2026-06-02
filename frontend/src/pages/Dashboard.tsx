@@ -256,10 +256,6 @@ export default function Dashboard() {
                             <Cell key={i} fill={d.fill} />
                           ))}
                         </Pie>
-                        <Tooltip
-                          contentStyle={TOOLTIP_STYLE}
-                          formatter={(v: any, n: any) => [`${v} employee${v === 1 ? '' : 's'}`, n]}
-                        />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
