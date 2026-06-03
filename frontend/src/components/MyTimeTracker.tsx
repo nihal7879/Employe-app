@@ -857,23 +857,14 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                       {initial}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div
-                        className="font-semibold text-slate-900 dark:text-white truncate"
-                        title={t.project_name || ''}
-                      >
+                      <div className="font-semibold text-slate-900 dark:text-white truncate">
                         {t.project_name || '—'}
                       </div>
-                      <div
-                        className="text-xs text-slate-500 dark:text-slate-400 truncate"
-                        title={[t.client_name, t.task_title].filter(Boolean).join(' · ')}
-                      >
+                      <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
                         {t.client_name || '—'}{t.task_title ? ` · ${t.task_title}` : ''}
                       </div>
                       {(t.assigned_by || t.reference) && (
-                        <div
-                          className="text-xs text-slate-400 dark:text-slate-500 truncate"
-                          title={[t.assigned_by && `Assigned by ${t.assigned_by}`, t.reference && `Ref: ${t.reference}`].filter(Boolean).join(' · ')}
-                        >
+                        <div className="text-xs text-slate-400 dark:text-slate-500 truncate">
                           {t.assigned_by ? `Assigned by ${t.assigned_by}` : ''}
                           {t.assigned_by && t.reference ? ' · ' : ''}
                           {t.reference ? `Ref: ${t.reference}` : ''}

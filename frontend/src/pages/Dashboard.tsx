@@ -35,6 +35,134 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 };
 
+// Styled tooltip for the compliance donut: colored dot + label + "<n> employees".
+// Pinned to the top of the chart (see position prop) so it never covers the
+// centered compliance %.
+function ComplianceTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0];
+  const value = Number(p.value) || 0;
+  const color = p.payload?.fill || '#7C3AED';
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bg-deep shadow-xl px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
+        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">{p.name}</span>
+      </div>
+      <div className="mt-1 text-base font-bold tabular-nums text-slate-900 dark:text-white leading-none">
+        {value} <span className="text-xs font-medium text-slate-500 dark:text-slate-400">employee{value === 1 ? '' : 's'}</span>
+      </div>
+    </div>
+  );
+}
+
+// Small styled hover tooltip (replaces ugly native `title=` popups). Renders
+// above the wrapped element on hover; the parent must allow overflow.
+function Tip({ text, children, className = '' }: { text: string; children: React.ReactNode; className?: string }) {
+  return (
+    <span className={`relative group/tip block ${className}`}>
+      {children}
+      <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-40 hidden group-hover/tip:block whitespace-nowrap rounded-lg bg-slate-900 dark:bg-slate-700 text-white text-[11px] font-medium px-2.5 py-1.5 shadow-lg">
+        {text}
+        <span className="absolute left-1/2 -translate-x-1/2 top-full -mt-px border-4 border-transparent border-t-slate-900 dark:border-t-slate-700" />
+      </span>
+    </span>
+  );
+}
+
+// Yesterday's submission compliance donut + stats. The center % stays visible at
+// all times; the slices are explained by the equal-height stat boxes below
+// (which double as the legend), so there's no hover tooltip to overlap it.
+function YesterdayComplianceCard({ submittedCount, pendingCount, overrides, yDate }: {
+  submittedCount: number; pendingCount: number; overrides: number; yDate: string;
+}) {
+  const totalEmp = submittedCount + pendingCount;
+  const pct = totalEmp > 0 ? Math.round((submittedCount / totalEmp) * 100) : 0;
+  const data = [
+    { name: 'Submitted', value: submittedCount, fill: '#10B981' },
+    { name: 'Pending', value: pendingCount, fill: '#EF4444' },
+    { name: 'Logged task before login', value: overrides, fill: '#F59E0B' },
+  ].filter((d) => d.value > 0);
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <Link to={`/reports?tab=daily&type=employee&date=${yDate}`} className="group">
+          <div className="font-semibold group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">Yesterday's submissions</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} submitted yesterday · view report →</div>
+        </Link>
+        <span className={pct >= 80 ? 'pill-ok' : pct >= 50 ? 'pill-warn' : 'pill-bad'}>{pct}%</span>
+      </div>
+      <div className="relative h-52 mx-auto w-full max-w-[200px]">
+        <ResponsiveContainer>
+          <PieChart>
+            <Pie
+              data={data.length ? data : [{ name: 'empty', value: 1, fill: 'rgba(15,23,42,0.06)' }]}
+              dataKey="value" nameKey="name"
+              innerRadius="80%" outerRadius="100%"
+              paddingAngle={data.length > 1 ? 4 : 0}
+              cornerRadius={8}
+              stroke="transparent"
+              startAngle={90}
+              endAngle={-270}
+            >
+              {(data.length ? data : [{ fill: 'rgba(15,23,42,0.06)' }]).map((d: any, i: number) => (
+                <Cell key={i} fill={d.fill} />
+              ))}
+            </Pie>
+            {data.length > 0 && (
+              <Tooltip
+                content={<ComplianceTooltip />}
+                position={{ y: -6 }}
+                allowEscapeViewBox={{ x: false, y: true }}
+                wrapperStyle={{ outline: 'none', zIndex: 50 }}
+              />
+            )}
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-semibold">Compliance</div>
+          <div className="text-4xl font-bold tabular-nums leading-none mt-1">{pct}%</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 tabular-nums">{submittedCount} / {totalEmp}</div>
+        </div>
+      </div>
+      {/* Compliance stats — Submitted / Pending / Logged-before-login, equal height. */}
+      <div className="mt-3 grid grid-cols-3 gap-2 items-stretch">
+        <Tip text="View employee productivity report" className="h-full">
+          <Link to={`/reports?tab=daily&type=employee&date=${yDate}`} className="h-full flex flex-col justify-between gap-1 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 px-3 py-2 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-500/15">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-semibold">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" /> Submitted
+            </div>
+            <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{submittedCount}</div>
+          </Link>
+        </Tip>
+        <Tip text="View pending submissions" className="h-full">
+          <Link to={`/reports?tab=daily&type=pending&date=${yDate}`} className="h-full flex flex-col justify-between gap-1 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 px-3 py-2 transition-colors hover:bg-rose-100 dark:hover:bg-rose-500/15">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-rose-700 dark:text-rose-300 font-semibold">
+              <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" /> Pending
+            </div>
+            <div className="text-xl font-bold text-rose-700 dark:text-rose-300 tabular-nums">{pendingCount}</div>
+          </Link>
+        </Tip>
+        <Tip text="Review tasks logged before login" className="h-full">
+          <Link
+            to={`/admin/login-mismatches?date=${yDate}`}
+            className={`h-full flex flex-col justify-between gap-1 rounded-xl px-3 py-2 border transition-colors ${
+              overrides > 0
+                ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/15'
+                : 'bg-slate-50 dark:bg-white/[0.04] border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/[0.08]'
+            }`}
+          >
+            <div className={`flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold ${overrides > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>
+              <AlertTriangle size={11} className="shrink-0" /> Before login
+            </div>
+            <div className={`text-xl font-bold tabular-nums ${overrides > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>{overrides}</div>
+          </Link>
+        </Tip>
+      </div>
+    </>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
@@ -211,7 +339,7 @@ export default function Dashboard() {
           <StatCard to="/admin/today-present"     icon={<Users size={20} />}         label="Present Today"     value={Number(admin.counts.present_today || 0)}     accent="brand" />
           <StatCard to="/admin/today-clients"     icon={<Briefcase size={20} />}     label="Clients Active"    value={(admin.today_clients || []).length}          accent="pink"  />
           <StatCard to="/admin/today-projects"    icon={<FolderKanban size={20} />}  label="Projects Active"   value={(admin.today_projects || []).length}         accent="ok"    />
-          <StatCard to="/reports"                 icon={<Clock size={20} />}         label="Hours Till Now"    value={Number(admin.today?.hours || 0)}             accent="cyan"  format={(n) => n.toFixed(1)} />
+          <StatCard to="/reports"                 icon={<Clock size={20} />}         label="Hours Till Now"    value={Number(admin.today?.hours || 0)}             accent="cyan"  format={(n) => `${Math.round(n)}h`} />
           <StatCard to="/admin/yesterday-pending" icon={<AlertTriangle size={20} />} label="Yesterday Pending" value={yPendingList.length}                         accent="bad"   />
         </div>
       )}
@@ -221,80 +349,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Submission compliance — YESTERDAY's data (today is still in progress) */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
-            {(() => {
-              const submittedCount = ySubmitted;
-              const pendingCount = yPendingList.length;
-              const totalEmp = submittedCount + pendingCount;
-              const pct = totalEmp > 0 ? Math.round((submittedCount / totalEmp) * 100) : 0;
-              const data = [
-                { name: 'Submitted', value: submittedCount, fill: '#10B981' },
-                { name: 'Pending',   value: pendingCount,   fill: '#EF4444' },
-              ].filter((d) => d.value > 0);
-              return (
-                <>
-                  <div className="flex items-center justify-between mb-4">
-                    <Link to={`/reports?tab=daily&type=employee&date=${yDate}`} className="group">
-                      <div className="font-semibold group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">Yesterday's submissions</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{submittedCount} of {totalEmp} submitted yesterday · view report →</div>
-                    </Link>
-                    <span className={pct >= 80 ? 'pill-ok' : pct >= 50 ? 'pill-warn' : 'pill-bad'}>{pct}%</span>
-                  </div>
-                  <div className="relative h-52 mx-auto w-full max-w-[200px]">
-                    <ResponsiveContainer>
-                      <PieChart>
-                        <Pie
-                          data={data.length ? data : [{ name: 'empty', value: 1, fill: 'rgba(15,23,42,0.06)' }]}
-                          dataKey="value" nameKey="name"
-                          innerRadius="80%" outerRadius="100%"
-                          paddingAngle={data.length > 1 ? 4 : 0}
-                          cornerRadius={8}
-                          stroke="transparent"
-                          startAngle={90}
-                          endAngle={-270}
-                        >
-                          {(data.length ? data : [{ fill: 'rgba(15,23,42,0.06)' }]).map((d: any, i: number) => (
-                            <Cell key={i} fill={d.fill} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-semibold">Compliance</div>
-                      <div className="text-4xl font-bold tabular-nums leading-none mt-1">{pct}%</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 tabular-nums">{submittedCount} / {totalEmp}</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 px-3 py-2">
-                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-emerald-700 dark:text-emerald-300 font-semibold">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500" /> Submitted
-                      </div>
-                      <div className="text-xl font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">{submittedCount}</div>
-                    </div>
-                    <div className="rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 px-3 py-2">
-                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-rose-700 dark:text-rose-300 font-semibold">
-                        <span className="h-2 w-2 rounded-full bg-rose-500" /> Pending
-                      </div>
-                      <div className="text-xl font-bold text-rose-700 dark:text-rose-300 tabular-nums">{pendingCount}</div>
-                    </div>
-                  </div>
-                  {/* Override: who logged tasks before their login time yesterday. */}
-                  <Link
-                    to={`/admin/login-mismatches?date=${yDate}`}
-                    className={`mt-2 flex items-center justify-between rounded-xl px-3 py-2 border transition-colors ${
-                      yOverrides > 0
-                        ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/15'
-                        : 'bg-slate-50 dark:bg-white/[0.04] border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/[0.08]'
-                    }`}
-                  >
-                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${yOverrides > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>
-                      <AlertTriangle size={13} /> Logged before login
-                    </span>
-                    <span className={`text-sm font-bold tabular-nums ${yOverrides > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'}`}>{yOverrides} →</span>
-                  </Link>
-                </>
-              );
-            })()}
+            <YesterdayComplianceCard submittedCount={ySubmitted} pendingCount={yPendingList.length} overrides={yOverrides} yDate={yDate} />
           </motion.div>
 
           {/* Hours by day of week */}
@@ -588,15 +643,15 @@ export default function Dashboard() {
               }
               return (
                 <>
-                  <div className="relative h-52">
+                  <div className="relative h-64">
                     <ResponsiveContainer>
                       <PieChart>
                         <Pie
                           data={clientsSorted}
                           dataKey="total_hours"
                           nameKey="client_name"
-                          innerRadius={70}
-                          outerRadius={100}
+                          innerRadius="62%"
+                          outerRadius="84%"
                           paddingAngle={clientsSorted.length > 1 ? 4 : 0}
                           cornerRadius={clientsSorted.length > 1 ? 8 : 0}
                           startAngle={90}
@@ -620,7 +675,7 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="mt-3 space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                  <div className="mt-3 space-y-1.5 max-h-32 overflow-y-auto thin-scrollbar pr-1">
                     {clientsSorted.map((c: any, i: number) => {
                       const pct = Math.round((Number(c.total_hours) / (total || 1)) * 100);
                       return (

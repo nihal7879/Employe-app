@@ -35,6 +35,15 @@ body {
 .dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
 .dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
 
+/* Thin scrollbar — used inside dropdown lists / compact scroll areas */
+.thin-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(15,23,42,0.10) transparent; }
+.thin-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.10); border-radius: 8px; }
+.thin-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.18); }
+.dark .thin-scrollbar { scrollbar-color: rgba(255,255,255,0.10) transparent; }
+.dark .thin-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
+
 ::selection { background: rgba(124,58,237,0.20); color: inherit; }
 .dark ::selection { background: rgba(124,58,237,0.45); color: #fff; }
 

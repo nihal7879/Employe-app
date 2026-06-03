@@ -116,7 +116,7 @@ export default function GlobalSearch() {
             transition={{ duration: 0.12 }}
             className="absolute left-0 right-0 mt-2 z-50 rounded-2xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden"
           >
-            <div className="max-h-80 overflow-y-auto py-1">
+            <div className="max-h-80 overflow-y-auto thin-scrollbar py-1">
               {results.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-slate-400">
                   No matches for "<span className="font-medium">{query}</span>"

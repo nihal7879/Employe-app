@@ -148,7 +148,7 @@ export default function Select({
                   </div>
                 </div>
               )}
-              <div className="max-h-72 overflow-y-auto py-1">
+              <div className="max-h-72 overflow-y-auto py-1 thin-scrollbar">
                 {visibleOptions.length === 0 && (
                   <div className="px-3 py-6 text-center text-sm text-slate-400">
                     {options.length === 0 ? 'No options' : 'No matches'}

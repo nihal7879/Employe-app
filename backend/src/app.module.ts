@@ -19,6 +19,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { ReportsModule } from './reports/reports.module';
 import { RolesModule } from './roles/roles.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { InboxModule } from './inbox/inbox.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
     AnalyticsModule,
     AuditModule,
     SchedulerModule,
+    InboxModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],

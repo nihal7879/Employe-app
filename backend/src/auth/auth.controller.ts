@@ -80,6 +80,28 @@ export class AuthController {
     return { success: true };
   }
 
+  // Fired by the frontend's `pagehide` beacon (navigator.sendBeacon) when the
+  // browser/tab is actually closed or navigated away — records a Logout audit
+  // row so a real browser close is captured at close time. Deliberately does
+  // NOT clear the auth cookie: pagehide also fires on refresh, and a
+  // Set-Cookie clear from the beacon response would wipe the session and bounce
+  // the user to /login on the very next load. Refresh therefore produces an
+  // extra Logout row, but every day-bounds query takes MAX(Logout) per day, so
+  // the real close always supersedes it and the session-end time stays correct.
+  @Post('logout-beacon')
+  @Public()
+  async logoutBeacon(@Req() req: Request) {
+    const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
+    const token = cookies?.[COOKIE_NAME];
+    if (token) {
+      const decoded = this.auth.decodeToken(token);
+      if (decoded) {
+        await this.auth.recordAudit(decoded.sub, decoded.email, 'Logout', getRequestContext(req));
+      }
+    }
+    return { success: true };
+  }
+
   @Get('me')
   async me(@CurrentUser() user: AuthUser) {
     // Merge the live permission flags so the task form unlocks/locks the moment

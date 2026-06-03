@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
   FolderKanban, ListChecks, Mail, ChevronLeft, ChevronDown, CalendarSearch,
-  Timer, Bell, Database, ShieldCheck,
+  Timer, Bell, Database, ShieldCheck, Inbox,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -33,6 +33,7 @@ const isGroup = (i: Item): i is GroupItem => 'group' in i;
 const items: Item[] = [
   { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false },
   { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true  },
+  // { to: '/inbox',         icon: Inbox,           label: 'Inbox',         admin: false, hideForAdmin: true  }, // hidden for now
   { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true  },
   { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: true  },
   { to: '/reports',          icon: BarChart3,       label: 'Reports',       admin: true,  hideForAdmin: false },

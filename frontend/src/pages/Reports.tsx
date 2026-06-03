@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Filter as FilterIcon, Activity as ActIcon, FolderKanban, Users, Briefcase } from 'lucide-react';
+import { Download, Filter as FilterIcon, Activity as ActIcon, FolderKanban, Users, Briefcase, SlidersHorizontal, Check } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -55,6 +55,25 @@ export default function Reports() {
   const [filters, setFilters] = useState({ employee_id: '', client_id: '', project_id: '', activity_id: '' });
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
+
+  // Break entries (imported "Lunch"/"Break" rows, is_break=true) are NOT listed
+  // as individual task rows in the drilldown — their time is rolled up into a
+  // single "Break" total instead. Everything else counts as work.
+  const workTasks = useMemo(() => tasks.filter((t) => !t.is_break), [tasks]);
+  const workHours = useMemo(() => workTasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0), [workTasks]);
+  // Includes idle gaps between tasks (same definition as the employee day view),
+  // not just explicit "Lunch"/"Break" rows.
+  const breakHours = useMemo(() => totalBreakHours(tasks), [tasks]);
+
+  // Drilldown column visibility (admin can show/hide columns; persisted locally).
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem(DRILL_COLS_KEY); if (s) return new Set(JSON.parse(s) as string[]); } catch { /* noop */ }
+    return new Set(DRILL_COLUMNS.filter((c) => c.defaultOn).map((c) => c.key));
+  });
+  useEffect(() => { try { localStorage.setItem(DRILL_COLS_KEY, JSON.stringify([...visibleCols])); } catch { /* noop */ } }, [visibleCols]);
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const shownCols = DRILL_COLUMNS.filter((c) => visibleCols.has(c.key));
+  const toggleCol = (k: string) => setVisibleCols((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   // Day view state — 'all' = aggregate across every employee (default).
   // Deep-linkable via ?employee=<id> (e.g. from the Present-today page).
@@ -222,6 +241,7 @@ export default function Reports() {
                   value={filters.employee_id}
                   onChange={(v) => setFilters({ ...filters, employee_id: v })}
                   placeholder="All employees"
+                  searchable searchPlaceholder="Search employees…"
                   options={[{ label: 'All employees', value: '' }, ...employees.map((x) => ({ label: x.name, value: String(x.id) }))]}
                 />
               </div>
@@ -231,6 +251,7 @@ export default function Reports() {
                   value={filters.client_id}
                   onChange={(v) => setFilters({ ...filters, client_id: v, project_id: '' })}
                   placeholder="All clients"
+                  searchable searchPlaceholder="Search clients…"
                   options={[{ label: 'All clients', value: '' }, ...clients.map((x) => ({ label: x.client_name, value: String(x.id) }))]}
                 />
               </div>
@@ -240,6 +261,7 @@ export default function Reports() {
                   value={filters.project_id}
                   onChange={(v) => setFilters({ ...filters, project_id: v })}
                   placeholder="All projects"
+                  searchable searchPlaceholder="Search projects…"
                   options={[{ label: 'All projects', value: '' }, ...filteredProjects.map((x) => ({ label: x.project_name, value: String(x.id) }))]}
                 />
               </div>
@@ -249,90 +271,106 @@ export default function Reports() {
                   value={filters.activity_id}
                   onChange={(v) => setFilters({ ...filters, activity_id: v })}
                   placeholder="All activities"
+                  searchable searchPlaceholder="Search activities…"
                   options={[{ label: 'All activities', value: '' }, ...activities.map((x) => ({ label: x.activity_name, value: String(x.id) }))]}
                 />
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-4 flex items-center justify-end">
               <button onClick={() => setFilters({ employee_id: '', client_id: '', project_id: '', activity_id: '' })} className="btn-ghost">
                 Clear filters
               </button>
-              <div className="ml-auto flex items-center gap-3">
-                <span className="text-sm text-slate-500">
-                  <strong className="text-slate-900">{tasks.length}</strong> tasks · <strong className="text-slate-900">{tasks.reduce((s, t) => s + Number(t.hours_spent), 0).toFixed(2)}</strong> hours
-                </span>
-                <button onClick={() => downloadCsv(`drilldown-${from}_to_${to}.csv`, tasksToCsvRows(tasks))} className="btn-primary">
-                  <Download size={14} /> Download CSV
-                </button>
-              </div>
             </div>
           </div>
 
           {/* Summary tiles */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <SummaryTile icon={<FolderKanban size={16} className="text-brand-600 dark:text-brand-300" />} label="Tasks" value={tasks.length} accent="brand" />
-            <SummaryTile icon={<ActIcon size={16} className="text-emerald-600 dark:text-emerald-300" />} label="Total Hours" value={Number(tasks.reduce((s, t) => s + Number(t.hours_spent), 0).toFixed(2))} accent="ok" />
-            <SummaryTile icon={<Users size={16} className="text-cyan-600 dark:text-cyan-300" />} label="Employees" value={new Set(tasks.map((t) => t.employee_id)).size} accent="cyan" />
-            <SummaryTile icon={<Briefcase size={16} className="text-pink-600 dark:text-pink-300" />} label="Projects" value={new Set(tasks.map((t) => t.project_id)).size} accent="pink" />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <SummaryTile icon={<FolderKanban size={16} className="text-brand-600 dark:text-brand-300" />} label="Tasks" value={workTasks.length} accent="brand" />
+            <SummaryTile icon={<ActIcon size={16} className="text-emerald-600 dark:text-emerald-300" />} label="Total Hours" value={fmtHr(workHours)} accent="ok" />
+            <SummaryTile icon={<ActIcon size={16} className="text-amber-600 dark:text-amber-300" />} label="Break Hours" value={fmtHr(breakHours)} accent="amber" />
+            <SummaryTile icon={<Users size={16} className="text-cyan-600 dark:text-cyan-300" />} label="Employees" value={new Set(workTasks.map((t) => t.employee_id)).size} accent="cyan" />
+            <SummaryTile icon={<Briefcase size={16} className="text-pink-600 dark:text-pink-300" />} label="Projects" value={new Set(workTasks.map((t) => t.project_id)).size} accent="pink" />
           </div>
 
           {/* Charts for filtered data */}
           {tasks.length > 0 && <DrilldownCharts tasks={tasks} />}
 
-          {/* Tasks table */}
+          {/* Tasks table — columns driven by the chooser; scrolls horizontally */}
           <div className="card p-5">
+            {/* Table toolbar (upper right): column chooser + download */}
+            <div className="flex items-center justify-end gap-3 mb-4">
+              <div className="relative">
+                <button onClick={() => setColMenuOpen((o) => !o)} className="btn-ghost" title="Show / hide columns">
+                  <SlidersHorizontal size={14} /> Columns
+                </button>
+                {colMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setColMenuOpen(false)} />
+                    <div className="absolute right-0 mt-1 z-20 w-56 max-h-80 overflow-y-auto thin-scrollbar rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 shadow-lg p-2">
+                      <div className="flex items-center justify-between px-2 py-1 text-xs text-slate-500">
+                        <button className="hover:text-brand-600" onClick={() => setVisibleCols(new Set(DRILL_COLUMNS.map((c) => c.key)))}>Show all</button>
+                        <button className="hover:text-brand-600" onClick={() => setVisibleCols(new Set(DRILL_COLUMNS.filter((c) => c.defaultOn).map((c) => c.key)))}>Default</button>
+                      </div>
+                      {DRILL_COLUMNS.map((c) => (
+                        <button
+                          key={c.key}
+                          onClick={() => toggleCol(c.key)}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-lg hover:bg-slate-50 dark:hover:bg-white/[0.04] text-left"
+                        >
+                          <span className={`h-4 w-4 flex items-center justify-center rounded border ${visibleCols.has(c.key) ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300 dark:border-white/20'}`}>
+                            {visibleCols.has(c.key) && <Check size={12} />}
+                          </span>
+                          <span className="text-slate-700 dark:text-slate-200">{c.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <button
+                onClick={() => downloadCsv(
+                  `drilldown-${from}_to_${to}.csv`,
+                  workTasks.map((t) => {
+                    const row: Record<string, string> = {};
+                    for (const c of shownCols) {
+                      // In the CSV, split Task into separate Task + Description columns.
+                      if (c.key === 'task') { row['Task'] = t.task_title || ''; row['Description'] = t.description || ''; }
+                      else row[c.label] = c.text(t);
+                    }
+                    return row;
+                  }),
+                )}
+                className="btn-primary"
+              >
+                <Download size={14} /> Download CSV
+              </button>
+            </div>
+
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-max">
                 <thead>
                   <tr>
-                    <th className="table-th">Date</th>
-                    <th className="table-th">Employee</th>
-                    <th className="table-th">Client</th>
-                    <th className="table-th">Project</th>
-                    <th className="table-th">Activity</th>
-                    <th className="table-th">Task</th>
-                    <th className="table-th">Assigned By</th>
-                    <th className="table-th text-right">Hours</th>
-                    <th className="table-th">Time</th>
-                    <th className="table-th">IP</th>
+                    {shownCols.map((c) => (
+                      <th key={c.key} className={`table-th ${c.align === 'right' ? 'text-right' : ''}`}>{c.label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((t) => (
+                  {workTasks.map((t) => (
                     <tr
                       key={t.id}
                       onClick={() => setViewTask(t)}
                       className="cursor-pointer hover:bg-slate-50 dark:hover:bg-white/[0.03]"
-                      title="Click to view full task details"
                     >
-                      <td className="table-td tabular-nums whitespace-nowrap">{t.task_date}</td>
-                      <td className="table-td">
-                        <div className="font-medium text-slate-900">{t.employee_name}</div>
-                        <div className="text-xs text-slate-500">{t.employee_email}</div>
-                      </td>
-                      <td className="table-td">{t.client_name}</td>
-                      <td className="table-td">{t.project_name}</td>
-                      <td className="table-td"><span className="pill-brand">{t.activity_name}</span></td>
-                      <td className="table-td max-w-[280px]">
-                        <div className="font-medium text-slate-900 truncate" title={t.task_title}>{t.task_title}</div>
-                        {t.description && <div className="text-xs text-slate-500 line-clamp-2" title={t.description}>{t.description}</div>}
-                      </td>
-                      <td className="table-td">
-                        {t.assigned_by ? (
-                          <div className="font-medium text-slate-900">{t.assigned_by}</div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                        {t.reference && <div className="text-xs text-slate-500">Ref: {t.reference}</div>}
-                      </td>
-                      <td className="table-td text-right tabular-nums font-semibold">{Number(t.hours_spent).toFixed(2)}</td>
-                      <td className="table-td whitespace-nowrap text-xs">{fmtTime12(t.start_time)} → {fmtTime12(t.end_time)}</td>
-                      <td className="table-td text-xs text-slate-500">{t.ip_address || '—'}</td>
+                      {shownCols.map((c) => (
+                        <td key={c.key} className={`table-td ${c.align === 'right' ? 'text-right' : ''} ${c.tdClass || ''}`}>{c.cell(t)}</td>
+                      ))}
                     </tr>
                   ))}
-                  {tasks.length === 0 && (
-                    <tr><td colSpan={10} className="table-td text-center text-slate-400 py-10">No tasks match these filters.</td></tr>
+                  {workTasks.length === 0 && (
+                    <tr><td colSpan={shownCols.length || 1} className="table-td text-center text-slate-400 py-10">No tasks match these filters.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -398,9 +436,10 @@ const ACCENT_CLASSES: Record<string, string> = {
   ok: 'bg-emerald-50 dark:bg-emerald-500/15',
   cyan: 'bg-cyan-50 dark:bg-cyan-500/15',
   pink: 'bg-pink-50 dark:bg-pink-500/15',
+  amber: 'bg-amber-50 dark:bg-amber-500/15',
 };
 
-function SummaryTile({ icon, label, value, accent = 'brand' }: { icon?: React.ReactNode; label: string; value: number; accent?: string }) {
+function SummaryTile({ icon, label, value, accent = 'brand' }: { icon?: React.ReactNode; label: string; value: number | string; accent?: string }) {
   return (
     <div className="card p-4 flex items-center gap-3">
       {icon && <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${ACCENT_CLASSES[accent] || ACCENT_CLASSES.brand}`}>{icon}</div>}
@@ -435,8 +474,8 @@ function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: (
             <Field label="Activity" value={task.activity_name} />
             <Field label="Assigned By" value={task.assigned_by} />
             <Field label="Reference" value={task.reference} />
-            <Field label="Hours" value={Number(task.hours_spent).toFixed(2)} />
-            <Field label="Time" value={`${fmtTime12(task.start_time)} → ${fmtTime12(task.end_time)}`} />
+            <Field label="Duration" value={fmtDuration(Number(task.hours_spent), task.start_time, task.end_time)} />
+            <Field label="Time" value={`${fmtTime12(task.start_time)} - ${fmtTime12(task.end_time)}`} />
             <Field label="Submission" value={task.submission_status} />
             <Field label="Progress" value={task.progress_status} />
             <Field label="IP Address" value={task.ip_address} />
@@ -485,12 +524,12 @@ function ChartBlock({ title, data, color }: { title: string; data: { label: stri
   return (
     <div>
       <div className="text-xs uppercase tracking-wider font-semibold text-slate-500 dark:text-slate-400 mb-2">{title}</div>
-      <ResponsiveContainer width="100%" height={Math.max(80, Math.min(220, data.length * 30 + 30))}>
+      <ResponsiveContainer width="100%" height={Math.max(80, Math.min(480, data.length * 34 + 30))}>
         <BarChart data={data} layout="vertical" margin={{ left: 0, right: 12 }}>
           <CartesianGrid stroke="rgba(15,23,42,0.06)" horizontal={false} />
           <XAxis type="number" tick={{ fontSize: 10 }} stroke="#94A3B8" />
-          <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} stroke="#94A3B8" width={100} />
-          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => `${Number(v).toFixed(2)}h`} />
+          <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} stroke="#94A3B8" width={100} interval={0} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => fmtHr(Number(v))} />
           <Bar dataKey="hours" radius={[0, 6, 6, 0]} fill={color} />
         </BarChart>
       </ResponsiveContainer>
@@ -538,6 +577,94 @@ function timeSlot(start?: string, end?: string) {
   return `${fmtTime12(start)} → ${fmtTime12(end)}`;
 }
 
+// Render a duration as "2:45:00" (H:MM:SS) instead of the misleading decimal
+// hours (2.17). Prefer the exact start→end span so it matches the Time column;
+// fall back to the stored decimal hours when a time is missing.
+function fmtDuration(hours?: number, start?: string, end?: string) {
+  const toSec = (t?: string) => {
+    const m = t?.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3] || 0) : null;
+  };
+  let secs: number | null = null;
+  const s = toSec(start), e = toSec(end);
+  if (s != null && e != null) { secs = e - s; if (secs < 0) secs += 86400; }
+  else if (Number.isFinite(hours)) secs = Math.round(Number(hours) * 3600);
+  if (secs == null) return '—';
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), sec = secs % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${pad(m)}:${pad(sec)}`;
+}
+
+// Drilldown table columns. `defaultOn` controls what an admin sees by default;
+// the rest (Assigned By, IP, GPS, Device, Browser, …) are hidden until toggled
+// on via the Columns chooser. The full set makes the table wide → it scrolls
+// horizontally inside its overflow-x-auto wrapper.
+type DrillCol = {
+  key: string; label: string; defaultOn: boolean; align?: 'right';
+  cell: (t: DailyTask) => React.ReactNode;        // table rendering
+  text: (t: DailyTask) => string;                  // CSV / plain value
+  tdClass?: string;
+};
+const DRILL_COLUMNS: DrillCol[] = [
+  { key: 'date', label: 'Date', defaultOn: true, text: (t) => t.task_date || '', cell: (t) => <span className="tabular-nums whitespace-nowrap">{t.task_date}</span> },
+  { key: 'employee', label: 'Employee', defaultOn: true, text: (t) => t.employee_name || '', cell: (t) => (<><div className="font-medium text-slate-900">{t.employee_name}</div><div className="text-xs text-slate-500">{t.employee_email}</div></>) },
+  { key: 'department', label: 'Department', defaultOn: false, text: (t) => t.department_name || '', cell: (t) => t.department_name || '—' },
+  { key: 'client', label: 'Client', defaultOn: true, text: (t) => t.client_name || '', cell: (t) => t.client_name || '—' },
+  { key: 'project', label: 'Project', defaultOn: true, text: (t) => t.project_name || '', cell: (t) => t.project_name || '—' },
+  { key: 'activity', label: 'Activity', defaultOn: true, text: (t) => t.activity_name || '', cell: (t) => (t.activity_name ? <span className="pill-brand">{t.activity_name}</span> : '—') },
+  { key: 'task', label: 'Task', defaultOn: true, tdClass: 'max-w-[280px]', text: (t) => [t.task_title, t.description].filter(Boolean).join(' — '), cell: (t) => (<><div className="font-medium text-slate-900 truncate">{t.task_title}</div>{t.description && <div className="text-xs text-slate-500 line-clamp-2">{t.description}</div>}</>) },
+  { key: 'assigned_by', label: 'Assigned By', defaultOn: false, text: (t) => t.assigned_by || '', cell: (t) => t.assigned_by || '—' },
+  { key: 'reference', label: 'Reference', defaultOn: false, text: (t) => t.reference || '', cell: (t) => t.reference || '—' },
+  { key: 'duration', label: 'Duration', defaultOn: true, align: 'right', text: (t) => fmtDuration(Number(t.hours_spent), t.start_time, t.end_time), cell: (t) => <span className="tabular-nums font-semibold">{fmtDuration(Number(t.hours_spent), t.start_time, t.end_time)}</span> },
+  { key: 'time', label: 'Time', defaultOn: true, text: (t) => `${fmtTime12(t.start_time)} - ${fmtTime12(t.end_time)}`, cell: (t) => <span className="whitespace-nowrap text-xs">{fmtTime12(t.start_time)} - {fmtTime12(t.end_time)}</span> },
+  { key: 'progress', label: 'Progress', defaultOn: false, text: (t) => t.progress_status || '', cell: (t) => t.progress_status || '—' },
+  { key: 'ip', label: 'IP', defaultOn: false, text: (t) => t.ip_address || '', cell: (t) => <span className="text-xs text-slate-500">{t.ip_address || '—'}</span> },
+  { key: 'gps', label: 'GPS', defaultOn: false, text: (t) => t.created_gps || '', cell: (t) => <span className="text-xs text-slate-500">{t.created_gps || '—'}</span> },
+  { key: 'device', label: 'Device', defaultOn: false, text: (t) => t.created_device || '', cell: (t) => <span className="text-xs text-slate-500">{t.created_device || '—'}</span> },
+  { key: 'browser', label: 'Browser', defaultOn: false, text: (t) => t.created_browser || '', cell: (t) => <span className="text-xs text-slate-500">{t.created_browser || '—'}</span> },
+  { key: 'logged_at', label: 'Logged At', defaultOn: false, text: (t) => t.created_at || '', cell: (t) => <span className="text-xs text-slate-500 whitespace-nowrap">{t.created_at || '—'}</span> },
+];
+const DRILL_COLS_KEY = 'em_drilldown_cols';
+
+const toMinOfDay = (t?: string) => { const m = t?.match(/^(\d{1,2}):(\d{2})/); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+
+// Hours only (rounded), e.g. 16.51 -> "17h". Used for all aggregate hour
+// totals (drilldown tiles, distribution charts, daily/weekly/monthly tables).
+function fmtHr(hours?: number) {
+  return `${Math.round(Number(hours || 0))}h`;
+}
+
+// Total break hours, matching the employee day view: idle GAPS between work
+// tasks PLUS explicit break rows. Computed per employee-day (so a gap never
+// spans two days or two employees), then summed. This is why the drilldown
+// previously showed 0 for days where the employee just left a gap for lunch
+// instead of logging an explicit "Lunch" break row.
+function totalBreakHours(tasks: DailyTask[]): number {
+  const groups = new Map<string, DailyTask[]>();
+  for (const t of tasks) {
+    const k = `${t.employee_id}|${t.task_date}`;
+    const arr = groups.get(k); if (arr) arr.push(t); else groups.set(k, [t]);
+  }
+  let mins = 0;
+  for (const g of groups.values()) {
+    const timed = g
+      .map((t) => ({ t, s: toMinOfDay(t.start_time), e: toMinOfDay(t.end_time) }))
+      .filter((x): x is { t: DailyTask; s: number; e: number } => x.s != null && x.e != null && x.e > x.s)
+      .sort((a, b) => a.s - b.s);
+    const work = timed.filter((x) => !x.t.is_break);
+    const explicit = timed.filter((x) => !!x.t.is_break).map((x) => ({ s: x.s, e: x.e }));
+    const gaps: { s: number; e: number }[] = [];
+    if (work.length) {
+      let cursor = work[0].s;
+      for (const b of work) { if (b.s > cursor) gaps.push({ s: cursor, e: b.s }); cursor = Math.max(cursor, b.e); }
+    }
+    // Drop gaps already covered by an explicit break (avoid double-counting).
+    const gapsOnly = gaps.filter((gp) => !explicit.some((e) => e.s >= gp.s && e.e <= gp.e));
+    mins += [...gapsOnly, ...explicit].reduce((s, b) => s + (b.e - b.s), 0);
+  }
+  return mins / 60;
+}
+
 function durationMinutes(start?: string, end?: string) {
   if (!start || !end) return '';
   const [sh, sm] = start.split(':').map(Number);
@@ -572,6 +699,9 @@ function tasksToCsvRows(tasks: DailyTask[]) {
     'Progress':        t.progress_status || '',
     'Remarks':         t.remarks || '',
     'IP Address':      t.ip_address || '',
+    'GPS':             t.created_gps || '',
+    'Device':          t.created_device || '',
+    'Browser':         t.created_browser || '',
     'Submitted At':    t.created_at || '',
   }));
 }
@@ -606,13 +736,13 @@ function DailyTable({
   if (data.length === 0) return <p className="text-slate-400 text-sm">No data.</p>;
   const cols: Record<DailyType, { header: string[]; row: (r: any) => any[] }> = {
     employee: { header: ['Employee', 'Email', 'Tasks', 'Total Hours'],
-                row: (r) => [r.employee_name, r.employee_email, r.task_count, Number(r.total_hours).toFixed(2)] },
+                row: (r) => [r.employee_name, r.employee_email, r.task_count, fmtHr(Number(r.total_hours))] },
     client:   { header: ['Client', 'Tasks', 'Total Hours'],
-                row: (r) => [r.client_name, r.task_count, Number(r.total_hours).toFixed(2)] },
+                row: (r) => [r.client_name, r.task_count, fmtHr(Number(r.total_hours))] },
     project:  { header: ['Project', 'Tasks', 'Total Hours'],
-                row: (r) => [r.project_name, r.task_count, Number(r.total_hours).toFixed(2)] },
+                row: (r) => [r.project_name, r.task_count, fmtHr(Number(r.total_hours))] },
     activity: { header: ['Activity', 'Tasks', 'Total Hours'],
-                row: (r) => [r.activity_name, r.task_count, Number(r.total_hours).toFixed(2)] },
+                row: (r) => [r.activity_name, r.task_count, fmtHr(Number(r.total_hours))] },
     pending:  { header: ['Code', 'Name', 'Email', 'Department'],
                 row: (r) => [r.employee_code, r.name, r.email, r.department_name] },
   };
@@ -689,7 +819,7 @@ function Section({ title, rows, cols, headers, emptyLabel = '—' }: { title: st
         <h3 className="font-semibold text-sm text-slate-900 dark:text-white">{title}</h3>
         <div className="flex items-center gap-3 text-xs">
           <span className="text-slate-500 dark:text-slate-400 tabular-nums">{totalTasks} tasks</span>
-          <span className="font-semibold text-brand-600 dark:text-brand-400 tabular-nums">{totalHours.toFixed(2)} h</span>
+          <span className="font-semibold text-brand-600 dark:text-brand-400 tabular-nums">{fmtHr(totalHours)}</span>
         </div>
       </div>
       <table className="w-full table-fixed">
@@ -705,7 +835,7 @@ function Section({ title, rows, cols, headers, emptyLabel = '—' }: { title: st
                   className={`table-td ${j === 0 ? 'font-medium text-slate-900 dark:text-white truncate' : 'text-right tabular-nums'}`}
                   title={j === 0 ? String((r[c] ?? '') === '' ? emptyLabel : r[c]) : undefined}
                 >
-                  {c === 'total_hours' ? Number(r[c]).toFixed(2) : (r[c] ?? '') === '' ? emptyLabel : r[c]}
+                  {c === 'total_hours' ? fmtHr(Number(r[c])) : (r[c] ?? '') === '' ? emptyLabel : r[c]}
                 </td>
               ))}
             </tr>

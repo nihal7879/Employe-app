@@ -126,7 +126,24 @@ export class SchedulerService {
       .whereNotIn('id', submittedIds.length ? submittedIds : [0])
       .select('id', 'name', 'email');
 
+    // Idempotency guard. On Vercel the cron runs as a serverless function with a
+    // max duration; sending these reminders one-by-one over SMTP can exceed it,
+    // so Vercel marks the invocation failed and RETRIES it — which previously
+    // re-sent to everyone still pending (employees received 3–4 copies). Skip
+    // anyone who already has a Reminder logged today. mail.send writes the
+    // email_logs row (status Pending → Sent) at the start of each attempt, so
+    // this dedupes reliably across retries and concurrent invocations.
+    const alreadySent = await this.db('email_logs')
+      .where('email_type', 'Reminder')
+      .whereRaw('DATE(created_at) = ?', [date])
+      .whereIn('status', ['Sent', 'Pending'])
+      .pluck('email_to');
+    const sentSet = new Set(alreadySent.map((e) => String(e).toLowerCase()));
+
     for (const emp of pending) {
+      const key = String(emp.email).toLowerCase();
+      if (sentSet.has(key)) continue; // already reminded today
+      sentSet.add(key);
       await this.mail.send({
         to: emp.email,
         subject: `Reminder: submit your daily tasks — ${date}`,

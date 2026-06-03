@@ -229,7 +229,7 @@ export function adminDailyDigestEmail(opts: {
   </div>`;
 }
 
-const APP_URL = 'https://employe-app-millicent.vercel.app';
+const APP_URL = 'https://employe-app-mt.vercel.app';
 
 export function reminderEmail(name: string, date: string) {
   return `
