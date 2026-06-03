@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import toast from 'react-hot-toast';
-import { api, clearStoredUser, getStoredUser, setStoredUser } from '../lib/api';
+import { api, clearStoredUser, getStoredUser, setStoredUser, hasInFlightMutations } from '../lib/api';
 import { pollForGpsCoords, requestGps, requireLocationGrant } from '../lib/geolocation';
 import { useIdleLogout } from './useIdleLogout';
 import { APP_CONFIG } from '../config/app-config';
@@ -70,6 +70,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) requestGps().catch(() => null);
   }, [user]);
 
+  // Record a server-side Logout the instant the browser/tab is actually closed
+  // (or the user navigates away). `pagehide` fires reliably on real close —
+  // unlike an async axios call, which the browser cancels mid-unload — so we
+  // use navigator.sendBeacon to a dedicated /auth/logout-beacon endpoint that
+  // logs the Logout audit row WITHOUT clearing the auth cookie.
+  //
+  //   • Refresh also fires pagehide → an extra Logout row, but the audit
+  //     day-bounds query takes MAX(Logout) per day, so the real close always
+  //     supersedes it. Skipped when a write is in flight (the user just clicked
+  //     a button — not leaving) and when the page is frozen into the bfcache
+  //     (event.persisted) rather than truly destroyed.
+  //   • Armed only while signed in.
+  useEffect(() => {
+    if (!user) return;
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (e.persisted) return;            // frozen into bfcache, not closed
+      if (hasInFlightMutations()) return; // mid-write → not actually leaving
+      try {
+        const base = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+        navigator.sendBeacon(`${base}/auth/logout-beacon`, new Blob([], { type: 'text/plain' }));
+      } catch { /* sendBeacon unsupported / blocked — nothing else to do here */ }
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [user]);
+
   const loginWithGoogleCredential = async (credential: string) => {
     // Permission prompt only — resolves on Allow click without waiting for
     // actual coordinates. Login is NOT blocked on GPS acquisition; the
@@ -78,6 +104,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data } = await api.post('/auth/google', { credential });
     setStoredUser(JSON.stringify(data.user));
+    // Refresh the cross-tab alive marker BEFORE setUser so the stale-check
+    // effect (below) doesn't see a leftover marker from a previous session
+    // (e.g. yesterday's, after an overnight browser close) and immediately
+    // force-logout this brand-new sign-in. Without this, the first login of
+    // the day bounces straight back to /login and only the second succeeds.
+    try { localStorage.setItem(SESSION_ALIVE_KEY, String(Date.now())); } catch { /* noop */ }
     setUser(data.user);
 
     // Background: poll for coords up to the configured window and PATCH the

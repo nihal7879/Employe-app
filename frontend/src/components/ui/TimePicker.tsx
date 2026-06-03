@@ -86,8 +86,9 @@ export default function TimePicker({
   };
   const pickPeriod = (p: 'AM' | 'PM') => {
     if (periodDisabled(p)) return;
+    // Keep the dropdown OPEN — switching AM/PM often re-enables hours that were
+    // disabled by minTime, so the user still needs to pick the hour/minute.
     commit(cur.h12 ? Number(cur.h12) : 12, cur.minute || '00', p);
-    setOpen(false);
   };
 
   const display = value && value.includes(':') ? `${cur.h12}:${cur.minute} ${cur.period}` : '';

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Plus, Clock } from 'lucide-react';
@@ -26,13 +27,24 @@ export default function Tasks() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
 
+  const [params, setParams] = useSearchParams();
   const [form, setForm] = useState({
     client_id: '', project_id: '', activity_id: '',
-    hours_spent: '', task_title: '', description: '',
+    hours_spent: '', task_title: params.get('title') || '', description: params.get('desc') || '',
     assigned_by: '', reference: '',
     task_date: todayStr(), start_time: '', end_time: '',
     progress_status: '',
   });
+
+  // Pre-fill from the "Add to DWR" deep link (client inbox). Clear the params so
+  // a refresh doesn't re-apply them after the user edits the form.
+  useEffect(() => {
+    if (params.get('title') || params.get('desc')) {
+      params.delete('title'); params.delete('desc');
+      setParams(params, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   // First Login of today (8 AM – 11:59 PM). Used as a floor for start/end
   // time pickers so users can't log work before they were actually at their
@@ -180,16 +192,19 @@ export default function Tasks() {
           <div>
             <label className="label">Client</label>
             <Select value={form.client_id} options={clientOptions} placeholder="Select client"
+              searchable searchPlaceholder="Search client…"
               onChange={(v) => setForm({ ...form, client_id: v, project_id: '' })} />
           </div>
           <div>
             <label className="label">Project</label>
             <Select value={form.project_id} options={projectOptions} placeholder="Select project"
+              searchable searchPlaceholder="Search project…"
               onChange={(v) => setForm({ ...form, project_id: v })} />
           </div>
           <div>
             <label className="label">Activity</label>
             <Select value={form.activity_id} options={activityOptions} placeholder="Select activity"
+              searchable searchPlaceholder="Search activity…"
               onChange={(v) => setForm({ ...form, activity_id: v })} />
           </div>
           <div>

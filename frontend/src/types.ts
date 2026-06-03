@@ -83,5 +83,11 @@ export interface DailyTask {
   is_break?: boolean | number;
   remarks?: string;
   ip_address?: string;
+  created_gps?: string;
+  created_device?: string;
+  created_browser?: string;
+  updated_gps?: string;
+  updated_device?: string;
+  updated_browser?: string;
   created_at?: string;
 }
