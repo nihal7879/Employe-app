@@ -9,7 +9,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     // GOOGLE_CALLBACK_URL may hold a comma-separated list (e.g. localhost +
     // prod). Passport needs a SINGLE redirect_uri or Google rejects the request
     // ("Access blocked: this app's request is invalid"). Pick by environment.
-    const isProd = config.get<string>('NODE_ENV') === 'production';
+    // Running on Vercel (or any prod host) → use the https callback; locally →
+    // the localhost one. VERCEL is set automatically on every Vercel deploy, so
+    // we don't depend on NODE_ENV being configured.
+    const isProd = config.get<string>('NODE_ENV') === 'production' || !!config.get('VERCEL');
     const urls = config
       .get<string>('GOOGLE_CALLBACK_URL', 'http://localhost:4000/auth/google/callback')
       .split(',')
@@ -18,6 +21,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const callbackURL =
       (isProd ? urls.find((u) => u.startsWith('https')) : urls.find((u) => u.includes('localhost'))) ||
       urls[0];
+    new Logger(GoogleStrategy.name).log(`Google OAuth callbackURL = ${callbackURL}`);
 
     super({
       clientID: config.get<string>('GOOGLE_CLIENT_ID') || 'unconfigured.apps.googleusercontent.com',
