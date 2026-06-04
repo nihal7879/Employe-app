@@ -6,13 +6,23 @@ import { Profile, Strategy, VerifyCallback } from 'passport-google-oauth20';
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(config: ConfigService) {
+    // GOOGLE_CALLBACK_URL may hold a comma-separated list (e.g. localhost +
+    // prod). Passport needs a SINGLE redirect_uri or Google rejects the request
+    // ("Access blocked: this app's request is invalid"). Pick by environment.
+    const isProd = config.get<string>('NODE_ENV') === 'production';
+    const urls = config
+      .get<string>('GOOGLE_CALLBACK_URL', 'http://localhost:4000/auth/google/callback')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const callbackURL =
+      (isProd ? urls.find((u) => u.startsWith('https')) : urls.find((u) => u.includes('localhost'))) ||
+      urls[0];
+
     super({
       clientID: config.get<string>('GOOGLE_CLIENT_ID') || 'unconfigured.apps.googleusercontent.com',
       clientSecret: config.get<string>('GOOGLE_CLIENT_SECRET') || 'unconfigured',
-      callbackURL: config.get<string>(
-        'GOOGLE_CALLBACK_URL',
-        'http://localhost:4000/auth/google/callback',
-      ),
+      callbackURL,
       scope: ['email', 'profile'],
     });
     if (!config.get<string>('GOOGLE_CLIENT_ID')) {

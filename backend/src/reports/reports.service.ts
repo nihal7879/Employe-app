@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
+import { LOGGING_ROLE_NAMES } from '../common/constants';
 
 type Range = { from: string; to: string };
 
@@ -64,7 +65,8 @@ export class ReportsService {
       .leftJoin('departments', 'employees.department_id', 'departments.id')
       .where('employees.is_active', true)
       .andWhere('employees.is_deleted', false)
-      .andWhere('employees.role_id', 2) // employees only — admins don't log tasks
+      // Employees + Managers — everyone who logs tasks; admins don't.
+      .whereIn('employees.role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'))
       .whereNotIn('employees.id', submittedEmpIds.length ? submittedEmpIds : [0])
       .select(
         'employees.id',

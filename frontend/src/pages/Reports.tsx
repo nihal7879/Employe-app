@@ -631,7 +631,12 @@ const toMinOfDay = (t?: string) => { const m = t?.match(/^(\d{1,2}):(\d{2})/); r
 // Hours only (rounded), e.g. 16.51 -> "17h". Used for all aggregate hour
 // totals (drilldown tiles, distribution charts, daily/weekly/monthly tables).
 function fmtHr(hours?: number) {
-  return `${Math.round(Number(hours || 0))}h`;
+  const total = Math.round(Number(hours || 0) * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
 }
 
 // Total break hours, matching the employee day view: idle GAPS between work

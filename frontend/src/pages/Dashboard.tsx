@@ -27,6 +27,16 @@ const dashCache: Record<string, { admin: any; ySubmitted: number; yPendingList: 
 
 const COLORS = ['#7C3AED', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#A78BFA', '#84CC16'];
 
+// Decimal hours → "Xh Ym" (e.g. 3.7 → "3h 42m", 2 → "2h", 0.5 → "30m").
+const fmtHrMin = (hours?: number) => {
+  const total = Math.round(Number(hours || 0) * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+};
+
 const TOOLTIP_STYLE = {
   borderRadius: 12,
   border: '1px solid rgba(15,23,42,0.10)',
@@ -339,7 +349,7 @@ export default function Dashboard() {
           <StatCard to="/admin/today-present"     icon={<Users size={20} />}         label="Present Today"     value={Number(admin.counts.present_today || 0)}     accent="brand" />
           <StatCard to="/admin/today-clients"     icon={<Briefcase size={20} />}     label="Clients Active"    value={(admin.today_clients || []).length}          accent="pink"  />
           <StatCard to="/admin/today-projects"    icon={<FolderKanban size={20} />}  label="Projects Active"   value={(admin.today_projects || []).length}         accent="ok"    />
-          <StatCard to="/reports"                 icon={<Clock size={20} />}         label="Hours Till Now"    value={Number(admin.today?.hours || 0)}             accent="cyan"  format={(n) => `${Math.round(n)}h`} />
+          <StatCard to="/reports"                 icon={<Clock size={20} />}         label="Hours Till Now"    value={Number(admin.today?.hours || 0)}             accent="cyan"  format={(n) => { const t = Math.round(n * 60), h = Math.floor(t / 60), m = t % 60; return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`; }} />
           <StatCard to="/admin/yesterday-pending" icon={<AlertTriangle size={20} />} label="Yesterday Pending" value={yPendingList.length}                         accent="bad"   />
         </div>
       )}
@@ -369,7 +379,7 @@ export default function Dashboard() {
                     <div>
                       <div className="font-semibold">Hours by weekday</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {topDay?.hours > 0 ? <>Peak day: <strong>{topDay.day}</strong> — {topDay.hours.toFixed(1)}h this month</> : 'No data yet'}
+                        {topDay?.hours > 0 ? <>Peak day: <strong>{topDay.day}</strong> — {fmtHrMin(topDay.hours)} this month</> : 'No data yet'}
                       </div>
                     </div>
                     <span className="pill-brand"><TrendingUp size={12} /> Month</span>
@@ -385,7 +395,7 @@ export default function Dashboard() {
                       <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
                       <XAxis dataKey="day" stroke="#94A3B8" tick={{ fontSize: 11 }} />
                       <YAxis stroke="#94A3B8" tick={{ fontSize: 11 }} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => `${Number(v).toFixed(1)}h`} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => fmtHrMin(Number(v))} />
                       <Bar dataKey="hours" radius={[8, 8, 0, 0]} fill="url(#dow)" />
                     </BarChart>
                   </ResponsiveContainer>
@@ -412,7 +422,7 @@ export default function Dashboard() {
                   <div>
                     <h3 className="font-semibold text-lg">Activity composition</h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      Where the team's time is going this month — {total.toFixed(1)}h total across {acts.length} activit{acts.length === 1 ? 'y' : 'ies'}
+                      Where the team's time is going this month — {fmtHrMin(total)} total across {acts.length} activit{acts.length === 1 ? 'y' : 'ies'}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -458,7 +468,7 @@ export default function Dashboard() {
                               />
                             </div>
                             <div className="w-24 text-right tabular-nums">
-                              <span className="text-sm font-bold text-slate-900 dark:text-white">{a.total_hours.toFixed(1)}h</span>
+                              <span className="text-sm font-bold text-slate-900 dark:text-white">{fmtHrMin(a.total_hours)}</span>
                               <span className="text-xs text-slate-400 dark:text-slate-500 ml-1">{pct}%</span>
                             </div>
                           </div>
@@ -495,7 +505,7 @@ export default function Dashboard() {
                 <CartesianGrid stroke="rgba(15,23,42,0.06)" vertical={false} />
                 <XAxis dataKey="project_name" stroke="#94A3B8" tick={{ fontSize: 11 }} />
                 <YAxis stroke="#94A3B8" tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => [fmtHrMin(Number(v)), 'Hours']} />
                 <Bar dataKey="total_hours" radius={[8, 8, 0, 0]} fill="url(#barg)" />
               </BarChart>
             </ResponsiveContainer>
@@ -520,7 +530,7 @@ export default function Dashboard() {
                 <CartesianGrid stroke="rgba(15,23,42,0.06)" horizontal={false} />
                 <XAxis type="number" stroke="#94A3B8" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="client_name" stroke="#94A3B8" tick={{ fontSize: 11 }} width={100} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(6,182,212,0.06)' }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(6,182,212,0.06)' }} formatter={(v: any) => [fmtHrMin(Number(v)), 'Hours']} />
                 <Bar dataKey="total_hours" radius={[0, 8, 8, 0]} fill="url(#cbar)" />
               </BarChart>
             </ResponsiveContainer>
@@ -567,7 +577,7 @@ export default function Dashboard() {
                     <div className="flex items-baseline justify-between mb-2 gap-3">
                       <div className="font-semibold text-slate-900 dark:text-white truncate">{p.project_name}</div>
                       <div className="text-sm tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
-                        <span className="font-bold text-slate-900 dark:text-white">{p.total_hours.toFixed(1)}h</span>
+                        <span className="font-bold text-slate-900 dark:text-white">{fmtHrMin(p.total_hours)}</span>
                         <span className="text-slate-400 dark:text-slate-500"> · {p.tasks} task{p.tasks === 1 ? '' : 's'}</span>
                       </div>
                     </div>
@@ -576,7 +586,7 @@ export default function Dashboard() {
                       {segs.map((s) => (
                         <span key={s.label} className="inline-flex items-center gap-1.5">
                           <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
-                          <span className="font-semibold tabular-nums">{s.value.toFixed(1)}h</span>
+                          <span className="font-semibold tabular-nums">{fmtHrMin(s.value)}</span>
                           <span className="text-slate-500 dark:text-slate-400">{s.label}</span>
                         </span>
                       ))}
@@ -614,7 +624,7 @@ export default function Dashboard() {
                 <CartesianGrid stroke="rgba(15,23,42,0.06)" horizontal={false} />
                 <XAxis type="number" stroke="#94A3B8" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="name" stroke="#94A3B8" tick={{ fontSize: 11 }} width={110} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(124,58,237,0.06)' }} formatter={(v: any) => [fmtHrMin(Number(v)), 'Hours']} />
                 <Bar dataKey="total_hours" name="Hours" radius={[0, 8, 8, 0]} fill="url(#ebar)" />
               </BarChart>
             </ResponsiveContainer>
@@ -669,7 +679,7 @@ export default function Dashboard() {
                         <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-semibold">Top client</div>
                         <div className="text-base font-bold text-slate-900 dark:text-white truncate max-w-[110px] text-center mt-0.5">{top.client_name}</div>
                         <div className="text-2xl font-bold text-brand-600 dark:text-brand-300 tabular-nums leading-none mt-1">
-                          {Number(top.total_hours).toFixed(1)}<span className="text-xs text-slate-400 dark:text-slate-500 font-medium"> h</span>
+                          {fmtHrMin(Number(top.total_hours))}
                         </div>
                         <div className="text-[10px] text-slate-400 mt-1">{total ? Math.round((top.total_hours / total) * 100) : 0}% of total</div>
                       </div>
@@ -682,7 +692,7 @@ export default function Dashboard() {
                         <div key={i} className="flex items-center gap-2 text-xs px-2 py-1 rounded-lg hover:bg-slate-50 dark:hover:bg-white/[0.04]">
                           <span className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-white dark:ring-bg-deep" style={{ background: COLORS[i % COLORS.length] }} />
                           <span className="flex-1 truncate text-slate-700 dark:text-slate-300">{c.client_name}</span>
-                          <span className="tabular-nums font-semibold text-slate-900 dark:text-white">{Number(c.total_hours).toFixed(1)}h</span>
+                          <span className="tabular-nums font-semibold text-slate-900 dark:text-white">{fmtHrMin(Number(c.total_hours))}</span>
                           <span className="tabular-nums text-slate-400 w-8 text-right">{pct}%</span>
                         </div>
                       );

@@ -19,8 +19,12 @@ function useDropdownPosition(triggerRef: React.RefObject<HTMLElement>, open: boo
   const update = () => {
     const el = triggerRef.current;
     if (!el) return;
+    // Viewport-relative coords for a position:fixed panel. Using scroll offsets
+    // here would be wrong: the app scrolls an inner <main>, not the window, so
+    // window.scrollY is 0 and an absolute-to-body panel lands off-screen and
+    // stretches the body (the stray second scrollbar / left shift).
     const r = el.getBoundingClientRect();
-    setRect({ top: r.bottom + window.scrollY, left: r.left + window.scrollX, width: r.width });
+    setRect({ top: r.bottom, left: r.left, width: r.width });
   };
 
   useLayoutEffect(() => {
@@ -125,7 +129,7 @@ export default function Select({
               exit={{ opacity: 0, y: -6, scale: 0.98 }}
               transition={{ duration: 0.15 }}
               style={{
-                position: 'absolute',
+                position: 'fixed',
                 top: rect.top + 6,
                 left: rect.left,
                 width: rect.width,

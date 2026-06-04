@@ -33,8 +33,22 @@ export class EmailService {
     this.from = this.config.get<string>('MAIL_FROM', 'no-reply@example.com');
   }
 
-  async send(opts: { to: string; subject: string; html: string; type: EmailType }) {
+  async send(opts: {
+    to: string;
+    subject: string;
+    html: string;
+    type: EmailType;
+    // When set, the email is sent at most once per key. The Pending row is
+    // claimed atomically via a UNIQUE index, so concurrent/duplicate job runs
+    // (in-process @Cron + Vercel HTTP cron + retries) can't double-send.
+    dedupeKey?: string;
+  }) {
     const logId = await this.logPending(opts);
+    if (logId == null) {
+      // Another invocation already claimed this key — skip silently.
+      this.logger.debug(`Skipped duplicate email → ${opts.to} [${opts.type}] (${opts.dedupeKey})`);
+      return;
+    }
     try {
       await this.transporter.sendMail({
         from: this.from,
@@ -50,14 +64,26 @@ export class EmailService {
     }
   }
 
-  private async logPending(opts: { to: string; subject: string; type: EmailType }) {
-    const [id] = await this.db('email_logs').insert({
-      email_to: opts.to,
-      subject: opts.subject,
-      email_type: opts.type,
-      status: 'Pending',
-    });
-    return id;
+  private async logPending(opts: {
+    to: string;
+    subject: string;
+    type: EmailType;
+    dedupeKey?: string;
+  }): Promise<number | null> {
+    try {
+      const [id] = await this.db('email_logs').insert({
+        email_to: opts.to,
+        subject: opts.subject,
+        email_type: opts.type,
+        status: 'Pending',
+        dedupe_key: opts.dedupeKey ?? null,
+      });
+      return id;
+    } catch (err: any) {
+      // Duplicate dedupe_key → another invocation already claimed this send.
+      if (err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062) return null;
+      throw err;
+    }
   }
 
   private markSent(id: number) {

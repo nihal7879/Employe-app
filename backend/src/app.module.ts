@@ -15,6 +15,7 @@ import { EmailModule } from './email/email.module';
 import { EmailLogsModule } from './email/email-logs.module';
 import { EmployeesModule } from './employees/employees.module';
 import { HealthController } from './health/health.controller';
+import { ManagersModule } from './managers/managers.module';
 import { ProjectsModule } from './projects/projects.module';
 import { ReportsModule } from './reports/reports.module';
 import { RolesModule } from './roles/roles.module';
@@ -32,6 +33,7 @@ import { InboxModule } from './inbox/inbox.module';
     RolesModule,
     DepartmentsModule,
     EmployeesModule,
+    ManagersModule,
     ClientsModule,
     ProjectsModule,
     ActivitiesModule,

@@ -1,22 +1,70 @@
-import { GoogleLogin } from '@react-oauth/google';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { ShieldCheck, Check, Rocket, Sparkles, Clock } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import illustration from '../assets/login-illustration.svg';
 
 export default function Login() {
-  const { user, loginWithGoogleCredential } = useAuth();
+  const { user, completeGooglePopupLogin } = useAuth();
   const { lockLight } = useTheme();
   const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
 
   // Login is always light. lockLight() ref-counts a light-mode override on
   // ThemeProvider so the dark class can't get re-applied after we strip it
   // (which is what was happening when the user's OS / saved pref was dark).
   useEffect(() => lockLight(), [lockLight]);
+
+  // Open the Google sign-in in a CENTERED, fixed-size popup. The popup runs the
+  // backend passport flow and lands on /auth/callback, which postMessages the
+  // result back here and closes itself.
+  const startGoogleLogin = () => {
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+    const url = `${base}/auth/google`;
+
+    // ---- Popup size (centered on the current screen) ----
+    const width = 480;   // 👈 popup width
+    const height = 640;  // 👈 popup height
+    const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+    const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+    // One comma-separated line — no spaces/newlines/comments, or sizes are ignored.
+    const features = `popup=yes,width=${width},height=${height},left=${left},top=${top}`;
+
+    const popup = window.open(url, 'googleSignIn', features);
+    if (!popup) { window.location.assign(url); return; } // popup blocked → full redirect
+    setBusy(true);
+
+    const cleanup = () => { window.removeEventListener('message', onMsg); window.clearInterval(timer); };
+    const onMsg = async (e: MessageEvent) => {
+      if (e.origin !== window.location.origin || e.data?.type !== 'app-auth') return;
+      cleanup();
+      try { popup.close(); } catch { /* ignore */ }
+      if (e.data.status !== 'success') {
+        setBusy(false);
+        toast.error('Sign-in failed — your Google account may not be registered.');
+        return;
+      }
+      try {
+        await completeGooglePopupLogin();
+        toast.success('Signed in');
+        nav('/', { replace: true });
+      } catch (err: any) {
+        if (err?.isNetworkError) return;
+        if (err?.reason) { toast.error(err.message, { duration: 8000 }); return; } // GPS denied
+        toast.error(err.response?.data?.message || 'Sign-in failed');
+      } finally {
+        setBusy(false);
+      }
+    };
+    // Fallback: user closed the popup manually without finishing.
+    const timer = window.setInterval(() => {
+      if (popup.closed) { cleanup(); setBusy(false); }
+    }, 600);
+    window.addEventListener('message', onMsg);
+  };
 
   if (user) return <Navigate to="/" replace />;
 
@@ -180,28 +228,20 @@ export default function Login() {
           </div>
 
           <div className="mt-8 flex justify-center lg:justify-start">
-            <GoogleLogin
-              theme="outline"
-              shape="rectangular"
-              size="large"
-              text="continue_with"
-              logo_alignment="center"
-              onSuccess={async (resp) => {
-                try {
-                  await loginWithGoogleCredential(resp.credential || '');
-                  toast.success('Signed in');
-                  nav('/', { replace: true });
-                } catch (e: any) {
-                  if (e?.isNetworkError) return;       // server unreachable — interceptor toast
-                  if (e?.reason) {                      // GpsError — user picked Never allow
-                    toast.error(e.message, { duration: 8000 });
-                    return;
-                  }
-                  toast.error(e.response?.data?.message || 'Sign-in failed');
-                }
-              }}
-              onError={() => toast.error('Google sign-in failed')}
-            />
+            <button
+              type="button"
+              onClick={startGoogleLogin}
+              disabled={busy}
+              className="inline-flex items-center justify-center gap-3 h-11 px-5 rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-white/[0.04] text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-white/[0.08] hover:shadow transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z" />
+                <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+                <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+                <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+              </svg>
+              {busy ? 'Signing in…' : 'Continue with Google'}
+            </button>
           </div>
 
           <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/10 flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500">
