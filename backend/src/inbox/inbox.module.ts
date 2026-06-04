@@ -1,8 +1,8 @@
-import { Controller, Get, Delete, Module, Param, Query, Res } from '@nestjs/common';
+import { Controller, Get, Delete, Module, Param, Query, Req, Res } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { ApiExcludeController } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { InboxService } from './inbox.service';
@@ -36,8 +36,17 @@ class InboxController {
   // OAuth redirect target — public, validated via the signed `state`.
   @Public()
   @Get('google/callback')
-  async callback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
-    const frontend = this.config.get<string>('FRONTEND_URL', 'http://localhost:5173').split(',')[0];
+  async callback(@Query('code') code: string, @Query('state') state: string, @Req() req: Request, @Res() res: Response) {
+    const fronts = this.config
+      .get<string>('FRONTEND_URL', 'http://localhost:5173')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const host = (req.get('host') || '').toLowerCase();
+    const isLocal = host.includes('localhost') || host.startsWith('127.');
+    const frontend =
+      (isLocal ? fronts.find((u) => u.includes('localhost')) : fronts.find((u) => !u.includes('localhost'))) ||
+      fronts[0];
     try {
       const payload = this.jwt.verify<{ sub: number; purpose: string }>(state, {
         secret: this.config.get<string>('JWT_SECRET', 'change-me'),
