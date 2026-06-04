@@ -60,7 +60,7 @@ export default function Inbox() {
       .finally(() => { setLoading(false); setLoadingMore(false); });
   };
 
-  useEffect(() => {
+  const refreshStatus = () => {
     api.get('/inbox/status').then((r) => {
       setConnected(!!r.data.connected);
       setEmail(r.data.email || '');
@@ -68,6 +68,10 @@ export default function Inbox() {
       // (no "Load emails" click needed). "Load more" still pages on demand.
       if (r.data.connected) load('in:inbox', false);
     }).catch(() => setConnected(false));
+  };
+
+  useEffect(() => {
+    refreshStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -80,8 +84,35 @@ export default function Inbox() {
   }, [params, setParams]);
 
   const connect = async () => {
-    try { const { data } = await api.get('/inbox/connect'); if (data.url) window.location.assign(data.url); }
-    catch { toast.error('Unable to start Gmail connection.'); }
+    try {
+      const { data } = await api.get('/inbox/connect');
+      if (!data.url) return;
+
+      // ---- Popup size (centered on the current screen) ----
+      const width = 500;   // 👈 popup width
+      const height = 650;  // 👈 popup height
+      const left = window.screenX + Math.max(0, (window.outerWidth - width) / 2);
+      const top = window.screenY + Math.max(0, (window.outerHeight - height) / 2);
+      // IMPORTANT: the features string must be ONE line, comma-separated, with
+      // no spaces/newlines/comments — otherwise the browser ignores the sizes.
+      const features = `popup=yes,width=${width},height=${height},left=${left},top=${top}`;
+
+      const popup = window.open(data.url, 'gmailSignIn', features);
+      if (!popup) { window.location.assign(data.url); return; } // popup blocked → fall back
+
+      const onMsg = (e: MessageEvent) => {
+        if (e.origin !== window.location.origin || e.data?.type !== 'gmail-auth') return;
+        cleanup();
+        try { popup.close(); } catch { /* ignore */ }
+        if (e.data.status === 'connected') { toast.success('Gmail connected.'); refreshStatus(); }
+        else toast.error('Could not connect Gmail.');
+      };
+      const timer = window.setInterval(() => {
+        if (popup.closed) { cleanup(); refreshStatus(); } // manual close → re-check
+      }, 600);
+      const cleanup = () => { window.removeEventListener('message', onMsg); window.clearInterval(timer); };
+      window.addEventListener('message', onMsg);
+    } catch { toast.error('Unable to start Gmail connection.'); }
   };
   const disconnect = async () => {
     await api.delete('/inbox/disconnect').catch(() => null);

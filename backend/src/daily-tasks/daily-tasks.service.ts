@@ -4,6 +4,7 @@ import { KNEX_CONNECTION } from '../database/knex.module';
 import type { RequestContext } from '../common/utils/request-context';
 import { CreateDailyTaskDto, ListDailyTasksDto, UpdateDailyTaskDto } from './dto/daily-task.dto';
 import { APP_CONFIG } from '../config/app-config';
+import { LOGGING_ROLE_NAMES } from '../common/constants';
 
 @Injectable()
 export class DailyTasksService {
@@ -30,10 +31,13 @@ export class DailyTasksService {
       );
   }
 
-  async list(q: ListDailyTasksDto, scope?: { employee_id?: number }) {
+  async list(q: ListDailyTasksDto, scope?: { employee_id?: number; employee_ids?: number[] }) {
     let qb = this.base();
     const empId = scope?.employee_id ?? q.employee_id;
     if (empId) qb = qb.where('daily_tasks.employee_id', empId);
+    // Restrict to a fixed set of employees (e.g. a manager's team). Combined
+    // with empId above, a requested employee outside the set yields no rows.
+    if (scope?.employee_ids) qb = qb.whereIn('daily_tasks.employee_id', scope.employee_ids.length ? scope.employee_ids : [0]);
     if (q.client_id) qb = qb.where('daily_tasks.client_id', q.client_id);
     if (q.project_id) qb = qb.where('daily_tasks.project_id', q.project_id);
     if (q.activity_id) qb = qb.where('daily_tasks.activity_id', q.activity_id);
@@ -255,7 +259,7 @@ export class DailyTasksService {
   // (the login-grace override). Used by the admin digest email and the
   // compliance view. Returns name, code, first login, earliest pre-login start,
   // and the count of such tasks.
-  async getLoginMismatches(date: string) {
+  async getLoginMismatches(date: string, employeeIds?: number[]) {
     const firstLogins = this.db('audit_logs')
       .where('event_type', 'Login')
       .whereRaw('DATE(created_at) = ?', [date])
@@ -271,6 +275,7 @@ export class DailyTasksService {
       .join(firstLogins, 'fl.employee_id', 'dt.employee_id')
       .where('dt.is_deleted', false)
       .andWhere('dt.task_date', date)
+      .modify((qb) => { if (employeeIds) qb.whereIn('e.id', employeeIds.length ? employeeIds : [0]); })
       .whereNotNull('dt.start_time')
       .whereRaw('dt.start_time < TIME(fl.first_login)')
       .groupBy('e.id', 'e.name', 'e.employee_code', 'e.email', 'd.department_name')
@@ -295,10 +300,12 @@ export class DailyTasksService {
     return { date, total_hours, tasks: rows };
   }
 
-  // Per-employee digest for the admin team summary (admins excluded; role_id 2 only).
+  // Per-employee digest for the admin team summary (admins excluded; Employees
+  // and Managers — everyone who logs daily tasks).
   async getAdminDailySummary(date: string) {
     const employees = await this.db('employees')
-      .where({ role_id: 2, is_active: true, is_deleted: false })
+      .where({ is_active: true, is_deleted: false })
+      .whereIn('role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'))
       .select('id', 'name')
       .orderBy('name');
 
@@ -325,13 +332,20 @@ export class DailyTasksService {
   }
 
   // Detailed per-employee digest for the admin (each employee's full task list).
-  async getAdminDailyDigest(date: string) {
+  // Pass employeeIds to scope it to one team (e.g. a manager's daily summary).
+  async getAdminDailyDigest(date: string, employeeIds?: number[]) {
     const employees = await this.db('employees')
-      .where({ role_id: 2, is_active: true, is_deleted: false })
+      .where({ is_active: true, is_deleted: false })
+      .modify((qb) => {
+        if (employeeIds) qb.whereIn('id', employeeIds.length ? employeeIds : [0]);
+        else qb.whereIn('role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'));
+      })
       .select('id', 'name')
       .orderBy('name');
 
-    const allTasks = await this.base().andWhere('daily_tasks.task_date', date);
+    const allTasks = await this.base()
+      .andWhere('daily_tasks.task_date', date)
+      .modify((qb) => { if (employeeIds) qb.whereIn('daily_tasks.employee_id', employeeIds.length ? employeeIds : [0]); });
     const byEmp = new Map<number, any[]>();
     for (const t of allTasks) {
       if (!byEmp.has(t.employee_id)) byEmp.set(t.employee_id, []);

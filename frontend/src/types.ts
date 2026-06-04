@@ -2,7 +2,7 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'Admin' | 'Employee';
+  role: 'Admin' | 'Employee' | 'Manager';
   allow_backdated_tasks?: boolean;
   allow_log_anytime?: boolean;
 }

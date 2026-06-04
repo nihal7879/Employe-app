@@ -6,6 +6,7 @@ import { DailyTasksService } from '../daily-tasks/daily-tasks.service';
 import { EmailService } from '../email/email.service';
 import { adminDailyDigestEmail, employeeDailyReportEmail, reminderEmail } from '../email/templates';
 import { APP_CONFIG } from '../config/app-config';
+import { LOGGING_ROLE_NAMES } from '../common/constants';
 
 @Injectable()
 export class SchedulerService {
@@ -24,15 +25,46 @@ export class SchedulerService {
     this.logger.log(`Running 11 PM daily report for ${date}`);
     await this.dispatchEmployeeReports(date, `Your Daily Task Report — ${date}`);
     await this.sendAdminDailySummary(date);
+    await this.sendManagerDailySummaries(date);
+  }
+
+  // ===== 11:00 PM — team daily summary to each manager, scoped to the
+  // employees the admin assigned to them (the same digest the admin receives,
+  // but only for that manager's team). =====
+  private async sendManagerDailySummaries(date: string) {
+    const managers = await this.db('employees')
+      .join('roles', 'employees.role_id', 'roles.id')
+      .where('roles.role_name', 'Manager')
+      .andWhere({ 'employees.is_active': true, 'employees.is_deleted': false })
+      .whereNotNull('employees.email')
+      .select('employees.id', 'employees.name', 'employees.email');
+
+    for (const mgr of managers) {
+      try {
+        const empIds = await this.db('manager_employees')
+          .join('employees', 'manager_employees.employee_id', 'employees.id')
+          .where('manager_employees.manager_id', mgr.id)
+          .andWhere({ 'employees.is_active': true, 'employees.is_deleted': false })
+          .pluck('manager_employees.employee_id');
+        if (!empIds.length) continue; // nothing assigned → no team email
+        const digest = await this.tasks.getAdminDailyDigest(date, empIds);
+        const overrides = await this.tasks.getLoginMismatches(date, empIds);
+        await this.mail.send({
+          to: mgr.email,
+          subject: `Your Team Daily Summary — ${date}`,
+          type: 'Daily Summary',
+          html: adminDailyDigestEmail({ ...digest, overrides }),
+          dedupeKey: `ManagerDailySummary:${date}:${mgr.id}`,
+        });
+      } catch (err: any) {
+        this.logger.error(`Manager summary failed for ${mgr.email}: ${err?.message}`);
+      }
+    }
   }
 
   // ===== 11:00 PM — detailed per-employee digest of the day's work to admin =====
   private async sendAdminDailySummary(date: string) {
-    // Always include nirav@millicent.in alongside the configured ADMIN_EMAIL
-    // (deduped). Nodemailer accepts a comma-separated recipient list.
-    const recipients = Array.from(
-      new Set([process.env.ADMIN_EMAIL, 'nirav@millicent.in'].filter(Boolean) as string[]),
-    ).join(', ');
+    const recipients = process.env.ADMIN_EMAIL;
     if (!recipients) return;
     const digest = await this.tasks.getAdminDailyDigest(date);
     const overrides = await this.tasks.getLoginMismatches(date);
@@ -41,6 +73,7 @@ export class SchedulerService {
       subject: `Team Daily Summary — ${date}`,
       type: 'Daily Summary',
       html: adminDailyDigestEmail({ ...digest, overrides }),
+      dedupeKey: `AdminDailySummary:${date}`,
     });
   }
 
@@ -79,9 +112,10 @@ export class SchedulerService {
   }
 
   private async dispatchEmployeeReports(date: string, subject: string) {
-    // Employees only (role_id 2) — admins do not receive a personal task report.
+    // Employees + Managers log tasks and receive a personal report; admins don't.
     const employees = await this.db('employees')
-      .where({ role_id: 2, is_active: true, is_deleted: false })
+      .where({ is_active: true, is_deleted: false })
+      .whereIn('role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'))
       .select('id', 'name', 'email');
 
     for (const emp of employees) {
@@ -94,6 +128,7 @@ export class SchedulerService {
           to: emp.email,
           subject,
           type: 'Daily Summary',
+          dedupeKey: `EmployeeDailyReport:${date}:${String(emp.email).toLowerCase()}`,
           html: employeeDailyReportEmail({
             name: emp.name,
             date,
@@ -120,35 +155,30 @@ export class SchedulerService {
       .pluck('employee_id');
 
 
-      // Employees only (role_id 2) — admins are not tracked, so no reminder for them.
+      // Employees + Managers are tracked for submission; admins are not reminded.
     const pending = await this.db('employees')
-      .where({ role_id: 2, is_active: true, is_deleted: false })
+      .where({ is_active: true, is_deleted: false })
+      .whereIn('role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'))
       .whereNotIn('id', submittedIds.length ? submittedIds : [0])
       .select('id', 'name', 'email');
 
-    // Idempotency guard. On Vercel the cron runs as a serverless function with a
-    // max duration; sending these reminders one-by-one over SMTP can exceed it,
-    // so Vercel marks the invocation failed and RETRIES it — which previously
-    // re-sent to everyone still pending (employees received 3–4 copies). Skip
-    // anyone who already has a Reminder logged today. mail.send writes the
-    // email_logs row (status Pending → Sent) at the start of each attempt, so
-    // this dedupes reliably across retries and concurrent invocations.
-    const alreadySent = await this.db('email_logs')
-      .where('email_type', 'Reminder')
-      .whereRaw('DATE(created_at) = ?', [date])
-      .whereIn('status', ['Sent', 'Pending'])
-      .pluck('email_to');
-    const sentSet = new Set(alreadySent.map((e) => String(e).toLowerCase()));
-
+    // Idempotency guard. This job fires more than once at the same wall-clock
+    // time — the in-process @Cron timer AND the Vercel HTTP cron both run at
+    // 6:45 PM IST, and on Vercel a serverless timeout makes the invocation
+    // RETRY — so employees previously received 2–4 copies. The old guard read a
+    // one-time snapshot of email_logs and then sent in a loop, but the log row
+    // is only written later inside mail.send, so concurrent invocations all
+    // read the same empty snapshot and each sent to everyone. The fix is a
+    // per-recipient dedupeKey claimed atomically via a UNIQUE index in
+    // email_logs: the first invocation inserts the row, the rest hit a
+    // duplicate-key error and skip — exactly one reminder per employee per day.
     for (const emp of pending) {
-      const key = String(emp.email).toLowerCase();
-      if (sentSet.has(key)) continue; // already reminded today
-      sentSet.add(key);
       await this.mail.send({
         to: emp.email,
         subject: `Reminder: submit your daily tasks — ${date}`,
         type: 'Reminder',
         html: reminderEmail(emp.name, date),
+        dedupeKey: `Reminder:${date}:${String(emp.email).toLowerCase()}`,
       });
     }
   }
@@ -168,7 +198,7 @@ export class SchedulerService {
     const totals = await this.db('daily_tasks')
       .leftJoin('employees', 'daily_tasks.employee_id', 'employees.id')
       .where('daily_tasks.is_deleted', false)
-      .andWhere('employees.role_id', 2)
+      .whereIn('employees.role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'))
       .andWhereBetween('daily_tasks.task_date', [range.from, range.to])
       .sum({ hours: 'daily_tasks.hours_spent' })
       .count({ tasks: 'daily_tasks.id' })
@@ -196,7 +226,7 @@ export class SchedulerService {
     const totals = await this.db('daily_tasks')
       .leftJoin('employees', 'daily_tasks.employee_id', 'employees.id')
       .where('daily_tasks.is_deleted', false)
-      .andWhere('employees.role_id', 2)
+      .whereIn('employees.role_id', this.db('roles').whereIn('role_name', LOGGING_ROLE_NAMES).select('id'))
       .andWhereBetween('daily_tasks.task_date', [range.from, range.to])
       .sum({ hours: 'daily_tasks.hours_spent' })
       .count({ tasks: 'daily_tasks.id' })

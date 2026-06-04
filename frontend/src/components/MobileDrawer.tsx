@@ -3,27 +3,32 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
-  FolderKanban, ListChecks, Mail, X, LogOut, Timer, Bell,
+  FolderKanban, ListChecks, Mail, X, LogOut, Timer, Bell, UsersRound, UserCog, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 const items = [
-  { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false },
-  { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true  },
-  { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true  },
-  { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: true  },
-  { to: '/admin/clients',    icon: Building2,       label: 'Clients',       admin: true,  hideForAdmin: false },
-  { to: '/admin/projects',   icon: FolderKanban,    label: 'Projects',      admin: true,  hideForAdmin: false },
-  { to: '/admin/employees',  icon: Users,           label: 'Employees',     admin: true,  hideForAdmin: false },
-  { to: '/reports',          icon: BarChart3,       label: 'Reports',       admin: true,  hideForAdmin: false },
-  { to: '/admin/activities', icon: ListChecks,      label: 'Activities',    admin: true,  hideForAdmin: false },
-  { to: '/admin/email-logs', icon: Mail,            label: 'Notifications', admin: true,  hideForAdmin: false },
+  { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false, manager: false },
+  { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true,  manager: false },
+  { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true,  manager: false },
+  { to: '/manager/team',     icon: UsersRound,      label: 'My Team',       admin: false, hideForAdmin: false, manager: true  },
+  { to: '/manager/permissions', icon: ShieldCheck,  label: 'Permissions',   admin: false, hideForAdmin: false, manager: true  },
+  { to: '/admin/clients',    icon: Building2,       label: 'Clients',       admin: true,  hideForAdmin: false, manager: false },
+  { to: '/admin/projects',   icon: FolderKanban,    label: 'Projects',      admin: true,  hideForAdmin: false, manager: false },
+  { to: '/admin/employees',  icon: Users,           label: 'Employees',     admin: true,  hideForAdmin: false, manager: false },
+  { to: '/admin/managers',   icon: UserCog,         label: 'Managers',      admin: true,  hideForAdmin: false, manager: false },
+  { to: '/reports',          icon: BarChart3,       label: 'Reports',       admin: true,  hideForAdmin: false, manager: false },
+  { to: '/admin/activities', icon: ListChecks,      label: 'Activities',    admin: true,  hideForAdmin: false, manager: false },
+  { to: '/admin/email-logs', icon: Mail,            label: 'Notifications', admin: true,  hideForAdmin: false, manager: false },
 ];
 
 export default function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const visible = items.filter((i) => (!i.admin || isAdmin) && !(isAdmin && i.hideForAdmin));
+  const isManager = user?.role === 'Manager';
+  const visible = items.filter(
+    (i) => (!i.admin || isAdmin) && (!i.manager || isManager) && !(isAdmin && i.hideForAdmin),
+  );
   const loc = useLocation();
 
   // close drawer on route change

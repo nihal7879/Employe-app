@@ -45,11 +45,18 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: Request, @Res() res: Response) {
-    const profile = req.user as { email: string; name: string; picture?: string };
-    const { access_token } = await this.auth.loginWithGoogle(profile, getRequestContext(req));
-    this.setAuthCookie(res, access_token);
-    const frontend = this.config.get<string>('FRONTEND_URL', 'http://localhost:5173');
-    return res.redirect(`${frontend}/auth/callback`);
+    const frontend = this.config
+      .get<string>('FRONTEND_URL', 'http://localhost:5173')
+      .split(',')[0];
+    try {
+      const profile = req.user as { email: string; name: string; picture?: string };
+      const { access_token } = await this.auth.loginWithGoogle(profile, getRequestContext(req));
+      this.setAuthCookie(res, access_token);
+      return res.redirect(`${frontend}/auth/callback?status=success`);
+    } catch {
+      // e.g. no active employee for this Google account — let the popup surface it.
+      return res.redirect(`${frontend}/auth/callback?status=error`);
+    }
   }
 
   @Public()

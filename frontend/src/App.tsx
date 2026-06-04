@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './auth/ProtectedRoute';
 import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import MyActivity from './pages/MyActivity';
@@ -9,6 +11,9 @@ import MyNotifications from './pages/MyNotifications';
 import Inbox from './pages/Inbox';
 import Reports from './pages/Reports';
 import Employees from './pages/admin/Employees';
+import Managers from './pages/admin/Managers';
+import ManagerDashboard from './pages/ManagerDashboard';
+import ManagerPermissions from './pages/ManagerPermissions';
 import Clients from './pages/admin/Clients';
 import Projects from './pages/admin/Projects';
 import Activities from './pages/admin/Activities';
@@ -21,9 +26,21 @@ import YesterdayPending from './pages/admin/YesterdayPending';
 import LoginMismatches from './pages/admin/LoginMismatches';
 
 export default function App() {
+  // When the Gmail OAuth callback redirects back (to `/?gmail=...`) inside the
+  // sign-in POPUP, notify the opener window and close the popup. On the normal
+  // (non-popup) tab this is a no-op and the Inbox page handles the param.
+  useEffect(() => {
+    const g = new URLSearchParams(window.location.search).get('gmail');
+    if (g && window.opener && window.opener !== window) {
+      try { window.opener.postMessage({ type: 'gmail-auth', status: g }, window.location.origin); } catch { /* ignore */ }
+      window.close();
+    }
+  }, []);
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
@@ -33,9 +50,14 @@ export default function App() {
             <Route path="/my-activity" element={<MyActivity />} />
             <Route path="/notifications" element={<MyNotifications />} />
           </Route>
+          <Route element={<ProtectedRoute managerOnly />}>
+            <Route path="/manager/team" element={<ManagerDashboard />} />
+            <Route path="/manager/permissions" element={<ManagerPermissions />} />
+          </Route>
           <Route element={<ProtectedRoute adminOnly />}>
             <Route path="/reports" element={<Reports />} />
             <Route path="/admin/employees" element={<Employees />} />
+            <Route path="/admin/managers" element={<Managers />} />
             <Route path="/admin/clients" element={<Clients />} />
             <Route path="/admin/projects" element={<Projects />} />
             <Route path="/admin/activities" element={<Activities />} />

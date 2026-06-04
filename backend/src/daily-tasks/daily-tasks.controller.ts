@@ -30,7 +30,7 @@ export class DailyTasksController {
   }
 
   @Post()
-  @Roles('Employee')
+  @Roles('Employee', 'Manager')
   create(
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
@@ -40,7 +40,7 @@ export class DailyTasksController {
   }
 
   @Put(':id')
-  @Roles('Employee')
+  @Roles('Employee', 'Manager')
   update(
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
@@ -51,7 +51,7 @@ export class DailyTasksController {
   }
 
   @Delete(':id')
-  @Roles('Employee')
+  @Roles('Employee', 'Manager')
   remove(
     @CurrentUser() user: AuthUser,
     @Req() req: Request,

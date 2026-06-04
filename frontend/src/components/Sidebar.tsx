@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
   FolderKanban, ListChecks, Mail, ChevronLeft, ChevronDown, CalendarSearch,
-  Timer, Bell, Database, ShieldCheck, Inbox,
+  Timer, Bell, Database, ShieldCheck, Inbox, UsersRound, UserCog,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -15,6 +15,7 @@ type LeafItem = {
   label: string;
   admin: boolean;
   hideForAdmin: boolean;
+  manager?: boolean; // visible only to Managers
 };
 type GroupItem = {
   group: 'manage';
@@ -22,6 +23,7 @@ type GroupItem = {
   label: string;
   admin: boolean;
   hideForAdmin: boolean;
+  manager?: boolean;
   children: { to: string; icon: LucideIcon; label: string }[];
 };
 type Item = LeafItem | GroupItem;
@@ -33,9 +35,10 @@ const isGroup = (i: Item): i is GroupItem => 'group' in i;
 const items: Item[] = [
   { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false },
   { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true  },
-  // { to: '/inbox',         icon: Inbox,           label: 'Inbox',         admin: false, hideForAdmin: true  }, // hidden for now
+  { to: '/inbox',         icon: Inbox,           label: 'Inbox',         admin: false, hideForAdmin: true  }, // hidden for now
   { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true  },
-  { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: true  },
+  { to: '/manager/team',     icon: UsersRound,      label: 'My Team',       admin: false, hideForAdmin: false, manager: true },
+  { to: '/manager/permissions', icon: ShieldCheck,  label: 'Permissions',   admin: false, hideForAdmin: false, manager: true },
   { to: '/reports',          icon: BarChart3,       label: 'Reports',       admin: true,  hideForAdmin: false },
   {
     group: 'manage',
@@ -47,11 +50,13 @@ const items: Item[] = [
       { to: '/admin/clients',    icon: Building2,    label: 'Clients' },
       { to: '/admin/projects',   icon: FolderKanban, label: 'Projects' },
       { to: '/admin/employees',  icon: Users,        label: 'Employees' },
+      { to: '/admin/managers',   icon: UserCog,      label: 'Managers' },
       { to: '/admin/activities', icon: ListChecks,   label: 'Activities' },
       { to: '/admin/permissions', icon: ShieldCheck, label: 'Permissions' },
     ],
   },
   { to: '/admin/email-logs', icon: Mail,            label: 'Notifications', admin: true,  hideForAdmin: false },
+  { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: true  },
 ];
 
 export default function Sidebar() {
@@ -59,7 +64,10 @@ export default function Sidebar() {
   const loc = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const isAdmin = user?.role === 'Admin';
-  const visible = items.filter((i) => (!i.admin || isAdmin) && !(isAdmin && i.hideForAdmin));
+  const isManager = user?.role === 'Manager';
+  const visible = items.filter(
+    (i) => (!i.admin || isAdmin) && (!i.manager || isManager) && !(isAdmin && i.hideForAdmin),
+  );
 
   // Per-group expanded state. Auto-opens when any of its children is the
   // current route so the active item is always visible without a manual click.
