@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/AppLayout';
 import ProtectedRoute from './auth/ProtectedRoute';
 import Login from './pages/Login';
-import AuthCallback from './pages/AuthCallback';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
 import MyActivity from './pages/MyActivity';
@@ -40,7 +39,6 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />

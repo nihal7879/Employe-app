@@ -21,7 +21,6 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const callbackURL =
       (isProd ? urls.find((u) => u.startsWith('https')) : urls.find((u) => u.includes('localhost'))) ||
       urls[0];
-    new Logger(GoogleStrategy.name).log(`Google OAuth callbackURL = ${callbackURL}`);
 
     super({
       clientID: config.get<string>('GOOGLE_CLIENT_ID') || 'unconfigured.apps.googleusercontent.com',

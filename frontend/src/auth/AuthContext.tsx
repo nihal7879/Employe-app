@@ -31,7 +31,6 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   loginWithGoogleCredential: (credential: string) => Promise<void>;
-  completeGooglePopupLogin: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -124,28 +123,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   };
 
-  // Finish a POPUP Google sign-in. The popup already hit the backend passport
-  // callback, which set the auth cookie + Login audit row — so here we only run
-  // the same post-login steps as the credential flow (GPS grant, alive marker,
-  // load the user via /auth/me, GPS backfill). No /auth/google POST needed.
-  const completeGooglePopupLogin = async () => {
-    await requireLocationGrant();
-    const { data } = await api.get('/auth/me');
-    const u = {
-      id: data.id, name: data.name, email: data.email, role: data.role,
-      allow_backdated_tasks: !!data.allow_backdated_tasks,
-      allow_log_anytime: !!data.allow_log_anytime,
-    };
-    setStoredUser(JSON.stringify(u));
-    try { localStorage.setItem(SESSION_ALIVE_KEY, String(Date.now())); } catch { /* noop */ }
-    setUser(u);
-    void (async () => {
-      const gps = await pollForGpsCoords(APP_CONFIG.gpsBackfillMaxWaitMs);
-      if (!gps) return;
-      try { await api.patch('/audit/login/backfill-gps', { gps }); } catch { /* ignore */ }
-    })();
-  };
-
   const logout = useCallback(async () => {
     try { await api.post('/auth/logout'); } catch { /* noop */ }
     clearStoredUser();
@@ -204,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, didStaleCheck, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogleCredential, completeGooglePopupLogin, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginWithGoogleCredential, logout }}>
       {children}
     </AuthContext.Provider>
   );
