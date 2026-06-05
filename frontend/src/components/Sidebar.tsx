@@ -35,7 +35,7 @@ const isGroup = (i: Item): i is GroupItem => 'group' in i;
 const items: Item[] = [
   { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false },
   { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true  },
-  // { to: '/inbox',         icon: Inbox,           label: 'Inbox',         admin: false, hideForAdmin: true  }, // hidden for now
+  { to: '/inbox',         icon: Inbox,           label: 'Inbox',         admin: false, hideForAdmin: true  }, // hidden for now
   { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true  },
   { to: '/manager/team',     icon: UsersRound,      label: 'My Team',       admin: false, hideForAdmin: false, manager: true },
   { to: '/manager/permissions', icon: ShieldCheck,  label: 'Permissions',   admin: false, hideForAdmin: false, manager: true },
