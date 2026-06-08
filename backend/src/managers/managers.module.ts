@@ -324,7 +324,7 @@ class ManagersService {
   // employee and/or project. Always restricted to the manager's team.
   async teamTasks(
     manager_id: number,
-    q: { from?: string; to?: string; employee_id?: number; client_id?: number; project_id?: number; activity_id?: number },
+    q: { from?: string; to?: string; employee_id?: string; client_id?: string; project_id?: string; activity_id?: string },
   ) {
     const empIds = await this.assignedEmployeeIds(manager_id);
     if (!empIds.length) return [];
@@ -444,10 +444,12 @@ class ManagersController {
     return this.s.teamTasks(user.id, {
       from,
       to,
-      employee_id: employee_id ? Number(employee_id) : undefined,
-      client_id: client_id ? Number(client_id) : undefined,
-      project_id: project_id ? Number(project_id) : undefined,
-      activity_id: activity_id ? Number(activity_id) : undefined,
+      // Passed through verbatim — each may be a single id or a comma-separated
+      // list ("1,2,3"); DailyTasksService.list normalizes them.
+      employee_id,
+      client_id,
+      project_id,
+      activity_id,
     });
   }
 

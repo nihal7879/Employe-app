@@ -24,6 +24,20 @@ function fmtTime12(t?: string | null) {
 
 type DayBounds = { first_login: string | null; last_logout: string | null };
 
+function toMin(t?: string | null): number | null {
+  if (!t) return null;
+  const m = t.match(/^(\d{1,2}):(\d{2})/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+// Worked hours from the exact start→end span (minute granularity) so day
+// totals match the per-task durations. hours_spent is rounded to 2 decimals
+// (20 min → 0.33h), so it's only a fallback when times are missing.
+function taskHours(t: DailyTask): number {
+  const s = toMin(t.start_time), e = toMin(t.end_time);
+  if (s != null && e != null && e > s) return (e - s) / 60;
+  return Number(t.hours_spent || 0);
+}
+
 // Track whether we're on a mobile-sized viewport. Cell chips are hidden at
 // this size (they overlap with the day number / hours pill in such small
 // squares); instead the tap opens a Modal with the day's bounds.
@@ -116,7 +130,7 @@ export default function EmployeeActivityCharts() {
     for (const t of tasks) {
       if (t.is_break) continue;
       const k = String(t.task_date).slice(0, 10);
-      m[k] = (m[k] || 0) + Number(t.hours_spent || 0);
+      m[k] = (m[k] || 0) + taskHours(t);
     }
     return m;
   }, [tasks]);

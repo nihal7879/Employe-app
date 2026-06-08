@@ -8,7 +8,7 @@ import { api } from '../lib/api';
 import type { DailyTask } from '../types';
 import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
-import Select from '../components/Select';
+import MultiSelect from '../components/MultiSelect';
 import DatePicker from '../components/ui/DatePicker';
 import { TableSkeleton } from '../components/Skeleton';
 
@@ -271,10 +271,11 @@ export default function ManagerDashboard() {
   const [fMode, setFMode] = useState<RangeMode>('day');
   const [fFrom, setFFrom] = useState(today());
   const [fTo, setFTo] = useState(today());
-  const [fEmp, setFEmp] = useState('');
-  const [fClient, setFClient] = useState('');
-  const [fProject, setFProject] = useState('');
-  const [fActivity, setFActivity] = useState('');
+  // Each filter holds a list of selected ids (multi-select). Empty = "All".
+  const [fEmp, setFEmp] = useState<string[]>([]);
+  const [fClient, setFClient] = useState<string[]>([]);
+  const [fProject, setFProject] = useState<string[]>([]);
+  const [fActivity, setFActivity] = useState<string[]>([]);
   const [activities, setActivities] = useState<{ id: number; activity_name: string }[]>([]);
   const [tasks, setTasks] = useState<DailyTask[] | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -291,25 +292,24 @@ export default function ManagerDashboard() {
     (assignments?.projects || []).forEach((p) => {
       if (p.client_id != null && p.client_name) m.set(String(p.client_id), p.client_name);
     });
-    return [{ label: 'All clients', value: '' }, ...[...m].map(([value, label]) => ({ label, value }))];
+    return [...m].map(([value, label]) => ({ label, value }));
   }, [assignments]);
   const empOpts = useMemo(
-    () => [{ label: 'All team members', value: '' },
-      ...(assignments?.employees || []).map((e) => ({ label: e.name, value: String(e.id) }))],
+    () => (assignments?.employees || []).map((e) => ({ label: e.name, value: String(e.id) })),
     [assignments],
   );
   const activityOpts = useMemo(
-    () => [{ label: 'All activities', value: '' },
-      ...activities.map((a) => ({ label: a.activity_name, value: String(a.id) }))],
+    () => activities.map((a) => ({ label: a.activity_name, value: String(a.id) })),
     [activities],
   );
-  // Projects filtered by the chosen client (cascade), for a given client value.
-  const projectOptsFor = (clientVal: string) => {
+  // Projects filtered by the chosen clients (cascade). With no client selected,
+  // every assigned project is offered.
+  const projectOptsFor = (clientVals: string[]) => {
+    const sel = new Set(clientVals);
     const list = (assignments?.projects || []).filter(
-      (p) => !clientVal || String(p.client_id ?? '') === clientVal,
+      (p) => !sel.size || sel.has(String(p.client_id ?? '')),
     );
-    return [{ label: 'All projects', value: '' },
-      ...list.map((p) => ({ label: p.client_name ? `${p.project_name} · ${p.client_name}` : p.project_name, value: String(p.id) }))];
+    return list.map((p) => ({ label: p.client_name ? `${p.project_name} · ${p.client_name}` : p.project_name, value: String(p.id) }));
   };
 
   const load = async () => {
@@ -360,10 +360,10 @@ export default function ManagerDashboard() {
         params: {
           from: fFrom,
           to: fTo,
-          employee_id: fEmp || undefined,
-          client_id: fClient || undefined,
-          project_id: fProject || undefined,
-          activity_id: fActivity || undefined,
+          employee_id: fEmp.join(',') || undefined,
+          client_id: fClient.join(',') || undefined,
+          project_id: fProject.join(',') || undefined,
+          activity_id: fActivity.join(',') || undefined,
         },
       });
       setTasks(Array.isArray(r.data) ? r.data : []);
@@ -563,31 +563,31 @@ export default function ManagerDashboard() {
           </div>
           <div className="min-w-[200px]">
             <label className="label">Team Member</label>
-            <Select value={fEmp} onChange={setFEmp} options={empOpts}
+            <MultiSelect value={fEmp} onChange={setFEmp} options={empOpts}
               placeholder="All team members" searchable searchPlaceholder="Search team members…" />
           </div>
           <div className="min-w-[180px]">
             <label className="label">Client</label>
-            <Select value={fClient} onChange={(v) => { setFClient(v); setFProject(''); }}
+            <MultiSelect value={fClient} onChange={(v) => { setFClient(v); setFProject([]); }}
               options={clientOpts} placeholder="All clients" searchable searchPlaceholder="Search clients…" />
           </div>
           <div className="min-w-[200px]">
             <label className="label">Project</label>
-            <Select value={fProject} onChange={setFProject} options={projectOptsFor(fClient)}
+            <MultiSelect value={fProject} onChange={setFProject} options={projectOptsFor(fClient)}
               placeholder="All projects" searchable searchPlaceholder="Search projects…" />
           </div>
           <div className="min-w-[180px]">
             <label className="label">Activity</label>
-            <Select value={fActivity} onChange={setFActivity} options={activityOpts}
+            <MultiSelect value={fActivity} onChange={setFActivity} options={activityOpts}
               placeholder="All activities" searchable searchPlaceholder="Search activities…" />
           </div>
         </div>
 
-        {(fEmp || fClient || fProject || fActivity) && (
+        {(fEmp.length || fClient.length || fProject.length || fActivity.length) > 0 && (
           <div className="flex justify-end">
             <button
               className="text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-              onClick={() => { setFEmp(''); setFClient(''); setFProject(''); setFActivity(''); }}
+              onClick={() => { setFEmp([]); setFClient([]); setFProject([]); setFActivity([]); }}
             >
               Clear filters
             </button>

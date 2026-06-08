@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { Activity } from '../../types';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import { TableSkeleton } from '../../components/Skeleton';
 
 export default function Activities() {
@@ -10,6 +11,7 @@ export default function Activities() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Activity | null>(null);
   const [name, setName] = useState('');
+  const [confirmId, setConfirmId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
@@ -27,9 +29,15 @@ export default function Activities() {
       toast.success('Saved'); setOpen(false); load();
     } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
   };
-  const remove = async (id: number) => {
-    if (!confirm('Delete this activity?')) return;
-    await api.delete(`/activities/${id}`); toast.success('Deleted'); load();
+  const remove = async () => {
+    if (confirmId == null) return;
+    try {
+      await api.delete(`/activities/${confirmId}`);
+      toast.success('Deleted');
+      load();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed');
+    }
   };
 
   return (
@@ -50,7 +58,7 @@ export default function Activities() {
                 <td className="table-td font-medium">{a.activity_name}</td>
                 <td className="table-td text-right space-x-2">
                   <button onClick={() => { setEditing(a); setName(a.activity_name); setOpen(true); }} className="text-brand-600"><Pencil size={16} /></button>
-                  <button onClick={() => remove(a.id)} className="text-red-600"><Trash2 size={16} /></button>
+                  <button onClick={() => setConfirmId(a.id)} className="text-red-600"><Trash2 size={16} /></button>
                 </td>
               </tr>
             ))}
@@ -78,6 +86,16 @@ export default function Activities() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title="Delete this activity?"
+        message="This will remove the activity. Existing tasks remain intact. You cannot undo this from the UI."
+        confirmLabel="Delete"
+        danger
+        onConfirm={remove}
+        onClose={() => setConfirmId(null)}
+      />
     </div>
   );
 }

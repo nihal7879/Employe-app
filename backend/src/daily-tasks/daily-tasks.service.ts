@@ -31,16 +31,30 @@ export class DailyTasksService {
       );
   }
 
+  // Normalize a filter value into a list of ids. Accepts a single id (number or
+  // string) or a comma-separated string ("1,2,3"), so the drilldown can filter
+  // by multiple selections at once. Invalid/empty entries are dropped.
+  private toIds(v?: number | string | (number | string)[]): number[] {
+    if (v == null) return [];
+    const arr = Array.isArray(v) ? v : String(v).split(',');
+    return arr.map((x) => Number(x)).filter((n) => Number.isFinite(n));
+  }
+
   async list(q: ListDailyTasksDto, scope?: { employee_id?: number; employee_ids?: number[] }) {
     let qb = this.base();
-    const empId = scope?.employee_id ?? q.employee_id;
-    if (empId) qb = qb.where('daily_tasks.employee_id', empId);
+    // A non-admin scope pins the query to one employee; otherwise honor the
+    // (possibly multi-value) employee_id filter from the request.
+    const empIds = scope?.employee_id != null ? [scope.employee_id] : this.toIds(q.employee_id);
+    if (empIds.length) qb = qb.whereIn('daily_tasks.employee_id', empIds);
     // Restrict to a fixed set of employees (e.g. a manager's team). Combined
-    // with empId above, a requested employee outside the set yields no rows.
+    // with empIds above, a requested employee outside the set yields no rows.
     if (scope?.employee_ids) qb = qb.whereIn('daily_tasks.employee_id', scope.employee_ids.length ? scope.employee_ids : [0]);
-    if (q.client_id) qb = qb.where('daily_tasks.client_id', q.client_id);
-    if (q.project_id) qb = qb.where('daily_tasks.project_id', q.project_id);
-    if (q.activity_id) qb = qb.where('daily_tasks.activity_id', q.activity_id);
+    const clientIds = this.toIds(q.client_id);
+    if (clientIds.length) qb = qb.whereIn('daily_tasks.client_id', clientIds);
+    const projectIds = this.toIds(q.project_id);
+    if (projectIds.length) qb = qb.whereIn('daily_tasks.project_id', projectIds);
+    const activityIds = this.toIds(q.activity_id);
+    if (activityIds.length) qb = qb.whereIn('daily_tasks.activity_id', activityIds);
     if (q.submission_status) qb = qb.where('daily_tasks.submission_status', q.submission_status);
     if (q.progress_status) qb = qb.where('daily_tasks.progress_status', q.progress_status);
     if (q.from) qb = qb.where('daily_tasks.task_date', '>=', q.from);

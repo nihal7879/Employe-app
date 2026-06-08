@@ -8,6 +8,7 @@ import {
 import { api } from '../lib/api';
 import type { Activity, Client, DailyTask, Employee, Project } from '../types';
 import Select from '../components/Select';
+import MultiSelect from '../components/MultiSelect';
 import DatePicker from '../components/ui/DatePicker';
 import MyTimeTracker from '../components/MyTimeTracker';
 import Modal from '../components/Modal';
@@ -52,7 +53,10 @@ export default function Reports() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [filters, setFilters] = useState({ employee_id: '', client_id: '', project_id: '', activity_id: '' });
+  // Each filter holds a list of selected ids (multi-select). Empty = "All".
+  const [filters, setFilters] = useState<{ employee_id: string[]; client_id: string[]; project_id: string[]; activity_id: string[] }>(
+    { employee_id: [], client_id: [], project_id: [], activity_id: [] },
+  );
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
 
@@ -75,9 +79,13 @@ export default function Reports() {
   const shownCols = DRILL_COLUMNS.filter((c) => visibleCols.has(c.key));
   const toggleCol = (k: string) => setVisibleCols((p) => { const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
-  // Day view state — 'all' = aggregate across every employee (default).
-  // Deep-linkable via ?employee=<id> (e.g. from the Present-today page).
-  const [dayEmployee, setDayEmployee] = useState(params.get('employee') || 'all');
+  // Day view state — empty list = aggregate across every employee (default).
+  // Multiple ids show each selected employee's day. Deep-linkable via
+  // ?employee=<id> (e.g. from the Present-today page).
+  const [dayEmployees, setDayEmployees] = useState<string[]>(() => {
+    const p = params.get('employee');
+    return p ? [p] : [];
+  });
 
   useEffect(() => {
     if (tab !== 'drilldown' && tab !== 'day-view') return;
@@ -89,10 +97,11 @@ export default function Reports() {
     // eslint-disable-next-line
   }, [tab]);
 
-  const filteredProjects = useMemo(
-    () => (filters.client_id ? projects.filter((p) => p.client_id === Number(filters.client_id)) : projects),
-    [projects, filters.client_id],
-  );
+  const filteredProjects = useMemo(() => {
+    if (!filters.client_id.length) return projects;
+    const sel = new Set(filters.client_id.map(Number));
+    return projects.filter((p) => sel.has(p.client_id));
+  }, [projects, filters.client_id]);
 
   const load = async () => {
     if (tab === 'daily') {
@@ -105,10 +114,10 @@ export default function Reports() {
       const r = await api.get('/daily-tasks', {
         params: {
           from, to,
-          employee_id: filters.employee_id || undefined,
-          client_id:   filters.client_id   || undefined,
-          project_id:  filters.project_id  || undefined,
-          activity_id: filters.activity_id || undefined,
+          employee_id: filters.employee_id.join(',') || undefined,
+          client_id:   filters.client_id.join(',')   || undefined,
+          project_id:  filters.project_id.join(',')  || undefined,
+          activity_id: filters.activity_id.join(',') || undefined,
         },
       });
       setTasks(r.data);
@@ -143,11 +152,11 @@ export default function Reports() {
         <div className="card p-5">
           {tab === 'daily' ? (
             <div className="flex flex-wrap gap-3 items-end mb-4">
-              <div className="w-44">
+              <div className="w-full sm:w-44">
                 <label className="label">Date</label>
                 <DatePicker value={date} onChange={setDate} clearable={false} />
               </div>
-              <div className="w-56">
+              <div className="w-full sm:w-56">
                 <label className="label">Report Type</label>
                 <Select
                   value={dailyType}
@@ -161,21 +170,21 @@ export default function Reports() {
                   ]}
                 />
               </div>
-              <button onClick={() => downloadCsv(`daily-${dailyType}-${date}.csv`, data || [])} className="btn-secondary ml-auto">
+              <button onClick={() => downloadCsv(`daily-${dailyType}-${date}.csv`, data || [])} className="btn-secondary w-full sm:w-auto sm:ml-auto">
                 <Download size={14} /> Download CSV
               </button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-3 items-end mb-4">
-              <div className="w-44">
+              <div className="w-[calc(50%-0.375rem)] sm:w-44">
                 <label className="label">From</label>
                 <DatePicker value={from} onChange={setFrom} clearable={false} />
               </div>
-              <div className="w-44">
+              <div className="w-[calc(50%-0.375rem)] sm:w-44">
                 <label className="label">To</label>
                 <DatePicker value={to} onChange={setTo} clearable={false} />
               </div>
-              <div className="w-56">
+              <div className="w-full sm:w-56">
                 <label className="label">Report Type</label>
                 <Select
                   value={rangeType}
@@ -199,7 +208,7 @@ export default function Reports() {
                   const rows = (data as any)?.[keyMap[rangeType]] || [];
                   downloadCsv(`${tab}-${rangeType}-${from}_to_${to}.csv`, rows);
                 }}
-                className="btn-secondary ml-auto"
+                className="btn-secondary w-full sm:w-auto sm:ml-auto"
               >
                 <Download size={14} /> Download CSV
               </button>
@@ -211,7 +220,7 @@ export default function Reports() {
               type={dailyType}
               data={data}
               onOpenEmployeeDay={(empId) => {
-                setDayEmployee(String(empId));
+                setDayEmployees([String(empId)]);
                 setTab('day-view');
               }}
             />
@@ -237,48 +246,48 @@ export default function Reports() {
               </div>
               <div>
                 <label className="label">Employee</label>
-                <Select
+                <MultiSelect
                   value={filters.employee_id}
                   onChange={(v) => setFilters({ ...filters, employee_id: v })}
                   placeholder="All employees"
                   searchable searchPlaceholder="Search employees…"
-                  options={[{ label: 'All employees', value: '' }, ...employees.map((x) => ({ label: x.name, value: String(x.id) }))]}
+                  options={employees.map((x) => ({ label: x.name, value: String(x.id) }))}
                 />
               </div>
               <div>
                 <label className="label">Client</label>
-                <Select
+                <MultiSelect
                   value={filters.client_id}
-                  onChange={(v) => setFilters({ ...filters, client_id: v, project_id: '' })}
+                  onChange={(v) => setFilters({ ...filters, client_id: v, project_id: [] })}
                   placeholder="All clients"
                   searchable searchPlaceholder="Search clients…"
-                  options={[{ label: 'All clients', value: '' }, ...clients.map((x) => ({ label: x.client_name, value: String(x.id) }))]}
+                  options={clients.map((x) => ({ label: x.client_name, value: String(x.id) }))}
                 />
               </div>
               <div>
                 <label className="label">Project</label>
-                <Select
+                <MultiSelect
                   value={filters.project_id}
                   onChange={(v) => setFilters({ ...filters, project_id: v })}
                   placeholder="All projects"
                   searchable searchPlaceholder="Search projects…"
-                  options={[{ label: 'All projects', value: '' }, ...filteredProjects.map((x) => ({ label: x.project_name, value: String(x.id) }))]}
+                  options={filteredProjects.map((x) => ({ label: x.project_name, value: String(x.id) }))}
                 />
               </div>
               <div>
                 <label className="label">Activity</label>
-                <Select
+                <MultiSelect
                   value={filters.activity_id}
                   onChange={(v) => setFilters({ ...filters, activity_id: v })}
                   placeholder="All activities"
                   searchable searchPlaceholder="Search activities…"
-                  options={[{ label: 'All activities', value: '' }, ...activities.map((x) => ({ label: x.activity_name, value: String(x.id) }))]}
+                  options={activities.map((x) => ({ label: x.activity_name, value: String(x.id) }))}
                 />
               </div>
             </div>
 
             <div className="mt-4 flex items-center justify-end">
-              <button onClick={() => setFilters({ employee_id: '', client_id: '', project_id: '', activity_id: '' })} className="btn-ghost">
+              <button onClick={() => setFilters({ employee_id: [], client_id: [], project_id: [], activity_id: [] })} className="btn-ghost">
                 Clear filters
               </button>
             </div>
@@ -385,8 +394,8 @@ export default function Reports() {
       {tab === 'day-view' && (
         <EmployeeDayView
           employees={employees}
-          employeeId={dayEmployee}
-          setEmployeeId={setDayEmployee}
+          employeeIds={dayEmployees}
+          setEmployeeIds={setDayEmployees}
           initialDate={date}
         />
       )}
@@ -395,36 +404,33 @@ export default function Reports() {
 }
 
 function EmployeeDayView({
-  employees, employeeId, setEmployeeId, initialDate,
+  employees, employeeIds, setEmployeeIds, initialDate,
 }: {
   employees: Employee[];
-  employeeId: string;
-  setEmployeeId: (s: string) => void;
+  employeeIds: string[];
+  setEmployeeIds: (s: string[]) => void;
   initialDate?: string;
 }) {
   return (
     <div className="space-y-4">
       <div className="card p-5">
         <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
-          <FilterIcon size={16} className="text-brand-600" /> Pick an employee
+          <FilterIcon size={16} className="text-brand-600" /> Pick employees
         </div>
         <div className="max-w-sm">
           <label className="label">Employee</label>
-          <Select
-            value={employeeId}
-            options={[
-              { label: 'All employees', value: 'all' },
-              ...employees.map((e) => ({ label: e.name, value: String(e.id) })),
-            ]}
-            onChange={setEmployeeId}
-            placeholder="Select employee"
+          <MultiSelect
+            value={employeeIds}
+            options={employees.map((e) => ({ label: e.name, value: String(e.id) }))}
+            onChange={setEmployeeIds}
+            placeholder="All employees"
             searchable
             searchPlaceholder="Type to search employee…"
           />
         </div>
       </div>
 
-      <MyTimeTracker employeeId={employeeId === 'all' ? undefined : employeeId} adminView initialDate={initialDate} />
+      <MyTimeTracker employeeId={employeeIds.join(',') || undefined} adminView initialDate={initialDate} />
     </div>
   );
 }
@@ -760,33 +766,35 @@ function DailyTable({
     );
   const rowEmpId = (r: any) => (type === 'pending' ? r.id : r.employee_id);
   return (
-    <table className="w-full">
-      <thead>
-        <tr>{headers.map((h) => <th key={h} className={`table-th ${numeric(h) ? 'text-right' : ''}`}>{h}</th>)}</tr>
-      </thead>
-      <tbody>
-        {data.map((r: any, i: number) => {
-          const isClickable = clickable(r);
-          return (
-            <tr
-              key={i}
-              onClick={isClickable ? () => onOpenEmployeeDay!(rowEmpId(r)) : undefined}
-              className={`hover:bg-slate-50 dark:hover:bg-white/[0.03] ${isClickable ? 'cursor-pointer' : ''}`}
-              title={isClickable ? 'View this employee’s day' : undefined}
-            >
-              {cols[type].row(r).map((v, j) => (
-                <td
-                  key={j}
-                  className={`table-td ${numeric(headers[j]) ? 'text-right tabular-nums' : ''} ${j === 0 ? 'font-medium text-slate-900 dark:text-white' : ''} ${isClickable && j === 0 ? 'text-brand-700 dark:text-brand-300 hover:underline' : ''}`}
-                >
-                  {v}
-                </td>
-              ))}
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto -mx-5 px-5">
+      <table className="w-full min-w-[480px]">
+        <thead>
+          <tr>{headers.map((h) => <th key={h} className={`table-th whitespace-nowrap ${numeric(h) ? 'text-right' : ''}`}>{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          {data.map((r: any, i: number) => {
+            const isClickable = clickable(r);
+            return (
+              <tr
+                key={i}
+                onClick={isClickable ? () => onOpenEmployeeDay!(rowEmpId(r)) : undefined}
+                className={`hover:bg-slate-50 dark:hover:bg-white/[0.03] ${isClickable ? 'cursor-pointer' : ''}`}
+                title={isClickable ? 'View this employee’s day' : undefined}
+              >
+                {cols[type].row(r).map((v, j) => (
+                  <td
+                    key={j}
+                    className={`table-td ${numeric(headers[j]) ? 'text-right tabular-nums whitespace-nowrap' : ''} ${j === 0 ? 'font-medium text-slate-900 dark:text-white' : ''} ${isClickable && j === 0 ? 'text-brand-700 dark:text-brand-300 hover:underline' : ''}`}
+                  >
+                    {v}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
