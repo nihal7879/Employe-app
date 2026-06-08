@@ -69,6 +69,15 @@ function toMin(t?: string): number | null {
   if (Number.isNaN(h)) return null;
   return h * 60 + (m || 0);
 }
+// A task's worked hours, derived from its exact start→end span (minute
+// granularity) so totals match the per-row Duration. The stored hours_spent is
+// rounded to 2 decimals (e.g. 20 min → 0.33h → 0:19:48), so we only fall back
+// to it when start/end times are missing.
+function taskHours(t: DailyTask): number {
+  const s = toMin(t.start_time), e = toMin(t.end_time);
+  if (s != null && e != null && e > s) return (e - s) / 60;
+  return Number(t.hours_spent || 0);
+}
 function fmtTime(min: number) {
   const h = Math.floor(min / 60);
   const m = min % 60;
@@ -90,13 +99,17 @@ function groupHours(tasks: DailyTask[], field: keyof DailyTask, fallback: string
   const m: Record<string, number> = {};
   for (const t of tasks) {
     const k = ((t[field] as string) || fallback);
-    m[k] = (m[k] || 0) + Number(t.hours_spent || 0);
+    m[k] = (m[k] || 0) + taskHours(t);
   }
   return Object.entries(m).map(([name, hours]) => ({ name, hours })).sort((a, b) => b.hours - a.hours);
 }
 
 export default function MyTimeTracker({ employeeId, adminView = false, initialDate: initialDateProp }: { employeeId?: string; adminView?: boolean; initialDate?: string }) {
   const [searchParams] = useSearchParams();
+  // employeeId may be a single id or a comma-separated list (admin can pick
+  // several). Empty = the whole team (admin) or the current user (own view).
+  const employeeIds = useMemo(() => (employeeId ? employeeId.split(',').filter(Boolean) : []), [employeeId]);
+  const singleEmployee = employeeIds.length === 1;
   // An explicit prop (e.g. the date picked on the Reports daily tab) takes
   // precedence over the ?date= deep-link param.
   const initialDate = initialDateProp ?? searchParams.get('date');
@@ -146,11 +159,13 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
   // and the backend would otherwise fall back to the admin's own login.
   useEffect(() => {
     if (view !== 'day') { setDayStart(null); return; }
-    if (adminView && !employeeId) { setDayStart(null); return; }
+    // A single start-of-day only makes sense for one employee. In admin "all"
+    // or multi-select mode there's no single login to anchor on, so skip.
+    if (adminView && !singleEmployee) { setDayStart(null); return; }
     api.get('/audit/day-start', { params: { date, employee_id: employeeId || undefined } })
       .then((r) => setDayStart(r.data?.start_time || null))
       .catch(() => setDayStart(null));
-  }, [view, date, employeeId, adminView]);
+  }, [view, date, employeeId, adminView, singleEmployee]);
 
   // Day-start for *today*, regardless of which day is being viewed. The edit
   // modal only opens for today's tasks, so this is the right floor for editing.
@@ -184,14 +199,15 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
   }, [tasks]);
 
   const workTasks = useMemo(() => tasks.filter((t) => !t.is_break), [tasks]);
-  const workHours = workTasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0);
-  const breakHours = tasks.filter((t) => t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0);
+  const workHours = workTasks.reduce((s, t) => s + taskHours(t), 0);
+  const breakHours = tasks.filter((t) => t.is_break).reduce((s, t) => s + taskHours(t), 0);
 
   const byClient = useMemo(() => groupHours(workTasks, 'client_name', '—'), [workTasks]);
   const byActivity = useMemo(() => groupHours(workTasks, 'activity_name', 'Other'), [workTasks]);
 
-  // Admin "All employees" mode: group tasks by employee so each person has their own block.
-  const groupAllByEmployee = adminView && !employeeId;
+  // Admin "All employees" / multi-select mode: group tasks by employee so each
+  // person has their own block. A single selected employee shows one timeline.
+  const groupAllByEmployee = adminView && !singleEmployee;
   const employeeGroups = useMemo(() => {
     if (!groupAllByEmployee) return [];
     const m = new Map<number, { id: number; name: string; tasks: DailyTask[] }>();
@@ -203,8 +219,8 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
     return Array.from(m.values())
       .map((g) => ({
         ...g,
-        work: g.tasks.filter((t) => !t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0),
-        brk:  g.tasks.filter((t) =>  t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0),
+        work: g.tasks.filter((t) => !t.is_break).reduce((s, t) => s + taskHours(t), 0),
+        brk:  g.tasks.filter((t) =>  t.is_break).reduce((s, t) => s + taskHours(t), 0),
       }))
       .sort((a, b) => b.work - a.work);
   }, [tasks, groupAllByEmployee]);
@@ -224,7 +240,7 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
                 : <>{shortDate(range.from)} → {shortDate(range.to)}</>}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {view === 'day' && !(adminView && !employeeId) && (
+              {view === 'day' && !(adminView && !singleEmployee) && (
                 <>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400">
                     {adminView ? 'Day started at' : 'Your day started at'} {dayStart ? fmtTime(toMin(dayStart) || 0) : '—'}
@@ -284,7 +300,7 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
             {adminView
-              ? (employeeId ? 'This employee has no tasks logged in this ' : 'No tasks logged across the team in this ')
+              ? (singleEmployee ? 'This employee has no tasks logged in this ' : 'No tasks logged across the selected employees in this ')
               : 'No tasks logged in this '}
             {view === 'range' ? 'range' : view}.
           </p>
@@ -768,7 +784,8 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
   return (
     <div>
       {note && <p className="text-[11px] text-slate-400 mb-2">{note}</p>}
-      <table className="w-full table-fixed">
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] table-fixed">
         <colgroup>
           <col />
           <col className="w-32" />
@@ -907,6 +924,7 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -924,8 +942,8 @@ function DaySections({ tasks, projectColors, onDelete, onView, onEdit }: { tasks
       .map(([date, dayTasks]) => ({
         date,
         dayTasks,
-        work: dayTasks.filter((t) => !t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0),
-        brk:  dayTasks.filter((t) =>  t.is_break).reduce((s, t) => s + Number(t.hours_spent || 0), 0),
+        work: dayTasks.filter((t) => !t.is_break).reduce((s, t) => s + taskHours(t), 0),
+        brk:  dayTasks.filter((t) =>  t.is_break).reduce((s, t) => s + taskHours(t), 0),
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [tasks]);

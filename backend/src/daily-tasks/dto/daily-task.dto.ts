@@ -38,10 +38,13 @@ export class UpdateDailyTaskDto {
 }
 
 export class ListDailyTasksDto {
-  @IsOptional() @IsInt() employee_id?: number;
-  @IsOptional() @IsInt() client_id?: number;
-  @IsOptional() @IsInt() project_id?: number;
-  @IsOptional() @IsInt() activity_id?: number;
+  // These accept a single id or a comma-separated list (e.g. "1,2,3") so the
+  // reports drilldown can filter by multiple employees/clients/projects/
+  // activities at once. The service normalizes them into number arrays.
+  @IsOptional() @IsString() employee_id?: string;
+  @IsOptional() @IsString() client_id?: string;
+  @IsOptional() @IsString() project_id?: string;
+  @IsOptional() @IsString() activity_id?: string;
   @IsOptional() @IsDateString() from?: string;
   @IsOptional() @IsDateString() to?: string;
   @IsOptional() @IsString() submission_status?: string;

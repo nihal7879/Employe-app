@@ -12,6 +12,14 @@ import { useAuth } from '../auth/AuthContext';
 import { APP_CONFIG } from '../config/app-config';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
+// Format a decimal-hours string ("1.50") as "1h 30m" for display.
+const fmtHM = (hours: string) => {
+  const total = Math.round(parseFloat(hours) * 60);
+  if (!total || total < 0) return '';
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return [h ? `${h}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ');
+};
 // today - N days as YYYY-MM-DD (earliest date a backdater may pick).
 const daysAgoStr = (n: number) => {
   const d = new Date();
@@ -222,7 +230,7 @@ export default function Tasks() {
             <div className="w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-sm">
               <Clock size={15} className="text-slate-400 shrink-0" />
               <span className={`flex-1 tabular-nums font-semibold ${form.hours_spent ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
-                {form.hours_spent ? `${form.hours_spent} h` : 'Auto'}
+                {form.hours_spent ? fmtHM(form.hours_spent) : 'Auto'}
               </span>
             </div>
             <p className="mt-1 text-[11px] text-ink-mute">Calculated from start &amp; end time</p>

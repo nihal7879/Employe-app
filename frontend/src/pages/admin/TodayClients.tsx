@@ -10,6 +10,16 @@ interface ClientRow {
   tasks: number | string;
 }
 
+// Decimal hours → "1h 30m" (drops the leading "0h" / trailing "0m").
+const fmtHrMin = (hours?: number) => {
+  const total = Math.round(Number(hours || 0) * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+};
+
 export default function TodayClients() {
   const [rows, setRows] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +52,7 @@ export default function TodayClients() {
         <div>
           <h1 className="text-2xl font-bold">Clients active today</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {todayLabel} · {filtered.length} client{filtered.length === 1 ? '' : 's'} · {Math.round(totalHours)}h total
+            {todayLabel} · {filtered.length} client{filtered.length === 1 ? '' : 's'} · {fmtHrMin(totalHours)} total
           </p>
         </div>
         <span className="ml-auto inline-flex items-center gap-1.5 pill-cyan"><Briefcase size={12} /> {filtered.length}</span>
@@ -73,7 +83,7 @@ export default function TodayClients() {
                 <tr key={i} className="hover:bg-slate-50 dark:hover:bg-white/[0.03]">
                   <td className="table-td font-medium text-slate-900 dark:text-white">{r.client_name || 'Unassigned'}</td>
                   <td className="table-td text-right tabular-nums">{Number(r.tasks).toFixed(0)}</td>
-                  <td className="table-td text-right tabular-nums font-semibold text-brand-600 dark:text-brand-300">{Math.round(Number(r.total_hours))}h</td>
+                  <td className="table-td text-right tabular-nums font-semibold text-brand-600 dark:text-brand-300">{fmtHrMin(Number(r.total_hours))}</td>
                 </tr>
               ))}
               {!loading && filtered.length === 0 && (
@@ -83,7 +93,7 @@ export default function TodayClients() {
                 <tr className="border-t-2 border-slate-200 dark:border-white/10 font-semibold">
                   <td className="table-td">Total</td>
                   <td className="table-td text-right tabular-nums">{totalTasks}</td>
-                  <td className="table-td text-right tabular-nums text-brand-700 dark:text-brand-300">{Math.round(totalHours)}h</td>
+                  <td className="table-td text-right tabular-nums text-brand-700 dark:text-brand-300">{fmtHrMin(totalHours)}</td>
                 </tr>
               )}
             </tbody>
