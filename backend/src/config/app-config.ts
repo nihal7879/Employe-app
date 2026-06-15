@@ -19,7 +19,7 @@
 // restart-only in practice — see its note below.)
 // ---------------------------------------------------------------------------
 
-import { readFileSync, statSync } from 'fs';
+import { readFileSync, statSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 function envStr(name: string, fallback: string): string {
@@ -50,6 +50,18 @@ function readRuntimeConfig(): Record<string, unknown> {
   } catch {
     return {}; // file missing or malformed → fall back to env/default
   }
+}
+
+// Merge a patch into runtime-config.json and write it back. Used by the admin
+// config endpoint so business rules can be tuned from the UI (no rebuild, no
+// restart). The cache is invalidated so the next read picks up the new value.
+export function writeRuntimeConfig(patch: Record<string, unknown>): void {
+  const current = (() => {
+    try { return JSON.parse(readFileSync(RUNTIME_CONFIG_PATH, 'utf8')); } catch { return {}; }
+  })();
+  const next = { ...current, ...patch };
+  writeFileSync(RUNTIME_CONFIG_PATH, JSON.stringify(next, null, 2) + '\n', 'utf8');
+  _rcCache = null; // force a re-read on next access
 }
 
 // Precedence (both helpers): runtime-config.json value → env var → fallback.

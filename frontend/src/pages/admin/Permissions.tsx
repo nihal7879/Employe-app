@@ -14,6 +14,41 @@ export default function Permissions() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null); // `${id}:${key}` in flight
 
+  // Global backdate window (days back a backdater may log). Admin-tunable; the
+  // build-time const is only the initial value until /config responds.
+  const [backdateDays, setBackdateDays] = useState(String(APP_CONFIG.backdateMaxDays));
+  const [savedDays, setSavedDays] = useState(String(APP_CONFIG.backdateMaxDays));
+  const [savingDays, setSavingDays] = useState(false);
+
+  useEffect(() => {
+    api.get('/config')
+      .then((r) => {
+        if (r.data?.backdateMaxDays != null) {
+          setBackdateDays(String(r.data.backdateMaxDays));
+          setSavedDays(String(r.data.backdateMaxDays));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveBackdateDays = async () => {
+    const n = Number(backdateDays);
+    if (!Number.isInteger(n) || n < 0 || n > 365) {
+      toast.error('Enter a whole number of days (0–365)'); return;
+    }
+    setSavingDays(true);
+    try {
+      const { data } = await api.patch('/config', { backdateMaxDays: n });
+      const next = String(data?.backdateMaxDays ?? n);
+      setBackdateDays(next); setSavedDays(next);
+      toast.success('Backdate window updated');
+    } catch {
+      toast.error('Could not update backdate window');
+    } finally {
+      setSavingDays(false);
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -58,9 +93,30 @@ export default function Permissions() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="card p-4 flex items-start gap-3">
           <CalendarClock size={18} className="text-brand-500 mt-0.5 shrink-0" />
-          <div>
+          <div className="flex-1">
             <div className="font-semibold text-sm">Backdate tasks</div>
-            <div className="text-xs text-ink-mute">Log for past dates (up to {APP_CONFIG.backdateMaxDays} days back), not just today.</div>
+            <div className="text-xs text-ink-mute">Log for past dates, not just today. How far back:</div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={365}
+                className="!w-20 !py-1.5 text-sm"
+                value={backdateDays}
+                onChange={(e) => setBackdateDays(e.target.value)}
+              />
+              <span className="text-xs text-ink-mute">days back</span>
+              {backdateDays !== savedDays && (
+                <button
+                  type="button"
+                  className="btn-primary !py-1.5 !px-3 text-xs"
+                  disabled={savingDays}
+                  onClick={saveBackdateDays}
+                >
+                  {savingDays ? 'Saving…' : 'Save'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <div className="card p-4 flex items-start gap-3">

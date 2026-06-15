@@ -330,8 +330,13 @@ export default function Dashboard() {
               <div>
                 <div className="text-xs text-slate-500 uppercase tracking-wider">Today</div>
                 <div className="text-3xl font-bold tabular-nums">
-                  <AnimatedNumber value={hoursToday} format={(n) => n.toFixed(2)} />
-                  <span className="text-base text-slate-500 font-normal"> h</span>
+                  <AnimatedNumber
+                    value={hoursToday}
+                    format={(n) => {
+                      const t = Math.round(n * 60), h = Math.floor(t / 60), m = t % 60;
+                      return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
+                    }}
+                  />
                 </div>
               </div>
             </div>

@@ -21,6 +21,14 @@ export default function ManagerPermissions() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null); // `${id}:${key}` in flight
+  // Live backdate window (admin-set). Read-only here; falls back to the build value.
+  const [backdateMaxDays, setBackdateMaxDays] = useState(APP_CONFIG.backdateMaxDays);
+
+  useEffect(() => {
+    api.get('/config')
+      .then((r) => { if (r.data?.backdateMaxDays != null) setBackdateMaxDays(Number(r.data.backdateMaxDays)); })
+      .catch(() => {});
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -75,7 +83,7 @@ export default function ManagerPermissions() {
           <CalendarClock size={18} className="text-brand-500 mt-0.5 shrink-0" />
           <div>
             <div className="font-semibold text-sm">Backdate tasks</div>
-            <div className="text-xs text-ink-mute">Log for past dates (up to {APP_CONFIG.backdateMaxDays} days back), not just today.</div>
+            <div className="text-xs text-ink-mute">Log for past dates (up to {backdateMaxDays} days back), not just today.</div>
           </div>
         </div>
         <div className="card p-4 flex items-start gap-3">
