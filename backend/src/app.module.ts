@@ -7,6 +7,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
+import { ConfigModule as AppSettingsModule } from './config/config.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { DailyTasksModule } from './daily-tasks/daily-tasks.module';
 import { KnexModule } from './database/knex.module';
@@ -43,6 +44,7 @@ import { InboxModule } from './inbox/inbox.module';
     AuditModule,
     SchedulerModule,
     InboxModule,
+    AppSettingsModule,
   ],
   controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: JwtAuthGuard }],

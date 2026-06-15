@@ -34,6 +34,9 @@ export default function Tasks() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  // How many days back a backdater may log. Admin-tunable at runtime, so we read
+  // it from the server (the build-time const is only the initial fallback).
+  const [backdateMaxDays, setBackdateMaxDays] = useState(APP_CONFIG.backdateMaxDays);
 
   const [params, setParams] = useSearchParams();
   const [form, setForm] = useState({
@@ -70,25 +73,49 @@ export default function Tasks() {
     [projects, form.client_id],
   );
 
+  // Meeting-type activities (e.g. General Meeting) aren't tied to a specific
+  // client/project, so those fields become optional when one is selected.
+  const selectedActivity = activities.find((a) => String(a.id) === form.activity_id);
+  const clientOptional = /meeting/i.test(selectedActivity?.activity_name || '');
+
   const clientOptions = clients.map((c) => ({ label: c.client_name, value: String(c.id) }));
   const projectOptions = filteredProjects.map((p) => ({ label: p.project_name, value: String(p.id) }));
   const activityOptions = activities.map((a) => ({ label: a.activity_name, value: String(a.id) }));
 
   const load = async () => {
-    const [c, p, a] = await Promise.all([
+    const [c, a] = await Promise.all([
       api.get('/clients'),
-      api.get('/projects'),
       api.get('/activities'),
     ]);
-    setClients(c.data); setProjects(p.data); setActivities(a.data);
+    setActivities(a.data);
+    // Managers may only log against the projects the admin assigned to them, so
+    // their client/project pickers are scoped to those assignments. Everyone
+    // else (employees, admins) sees the full project list.
+    if (user?.role === 'Manager') {
+      const { data } = await api.get('/managers/me/assignments');
+      const projs: Project[] = (data.projects || []).map((p: any) => ({
+        id: p.id, client_id: p.client_id, client_name: p.client_name,
+        project_code: p.project_code, project_name: p.project_name,
+        project_status: 'Active', is_active: true,
+      }));
+      setProjects(projs);
+      const assignedClientIds = new Set(projs.map((p) => p.client_id));
+      setClients((c.data as Client[]).filter((cl) => assignedClientIds.has(cl.id)));
+    } else {
+      const p = await api.get('/projects');
+      setClients(c.data); setProjects(p.data);
+    }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [user?.role]);
 
   useEffect(() => {
     api.get('/audit/day-start', { params: { date: todayStr() } })
       // earliest_task_time = login − grace window; the floor the picker enforces.
       .then((r) => setDayStart(r.data?.earliest_task_time || null))
       .catch(() => setDayStart(null));
+    api.get('/config')
+      .then((r) => { if (r.data?.backdateMaxDays != null) setBackdateMaxDays(Number(r.data.backdateMaxDays)); })
+      .catch(() => {});
   }, []);
 
   // The login-time floor only applies to today's entries logged normally.
@@ -112,8 +139,11 @@ export default function Tasks() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return; // prevent double-submit while in-flight
-    if (!form.client_id || !form.project_id || !form.activity_id) {
-      toast.error('Select client, project and activity'); return;
+    if (!form.activity_id) {
+      toast.error('Select an activity'); return;
+    }
+    if (!clientOptional && (!form.client_id || !form.project_id)) {
+      toast.error('Select client and project'); return;
     }
     if (!form.start_time || !form.end_time) {
       toast.error('Enter start and end time'); return;
@@ -136,8 +166,8 @@ export default function Tasks() {
     setSubmitting(true);
     try {
       await api.post('/daily-tasks', {
-        client_id: Number(form.client_id),
-        project_id: Number(form.project_id),
+        client_id: form.client_id ? Number(form.client_id) : undefined,
+        project_id: form.project_id ? Number(form.project_id) : undefined,
         activity_id: Number(form.activity_id),
         hours_spent: Number(form.hours_spent),
         task_title: form.task_title,
@@ -188,23 +218,28 @@ export default function Tasks() {
               clearable={false}
               disabled={!canBackdate}
               maxDate={todayStr()}
-              minDate={canBackdate ? daysAgoStr(APP_CONFIG.backdateMaxDays) : undefined}
+              minDate={canBackdate ? daysAgoStr(backdateMaxDays) : undefined}
               onChange={(v) => setForm({ ...form, task_date: v || todayStr() })}
             />
             <p className="mt-1 text-[11px] text-ink-mute">
               {canBackdate
-                ? `You can log up to ${APP_CONFIG.backdateMaxDays} days back`
+                ? `You can log up to ${backdateMaxDays} days back`
                 : 'You can only log today’s tasks'}
             </p>
           </div>
           <div>
-            <label className="label">Client</label>
+            <label className="label">Client{clientOptional && <span className="text-ink-mute font-normal"> (optional)</span>}</label>
             <Select value={form.client_id} options={clientOptions} placeholder="Select client"
               searchable searchPlaceholder="Search client…"
-              onChange={(v) => setForm({ ...form, client_id: v, project_id: '' })} />
+              onChange={(v) => {
+                const keepProject = projects.some(
+                  (p) => String(p.id) === form.project_id && p.client_id === Number(v),
+                );
+                setForm({ ...form, client_id: v, project_id: keepProject ? form.project_id : '' });
+              }} />
           </div>
           <div>
-            <label className="label">Project</label>
+            <label className="label">Project{clientOptional && <span className="text-ink-mute font-normal"> (optional)</span>}</label>
             <Select value={form.project_id} options={projectOptions} placeholder="Select project"
               searchable searchPlaceholder="Search project…"
               onChange={(v) => setForm({ ...form, project_id: v })} />

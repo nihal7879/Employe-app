@@ -38,6 +38,12 @@ function taskHours(t: DailyTask): number {
   return Number(t.hours_spent || 0);
 }
 
+// Decimal hours → compact "Xh Ym" (e.g. 8.4 → "8h 24m", 0.5 → "30m").
+function fmtH(hours: number): string {
+  const t = Math.round(hours * 60), h = Math.floor(t / 60), m = t % 60;
+  return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
+}
+
 // Track whether we're on a mobile-sized viewport. Cell chips are hidden at
 // this size (they overlap with the day number / hours pill in such small
 // squares); instead the tap opens a Modal with the day's bounds.
@@ -379,7 +385,7 @@ function MonthCell({ date, hours, tasks, bounds, projectColors, today, onClick }
         <>
           <div className="hidden sm:flex absolute inset-x-0 bottom-2 justify-center pointer-events-none">
             <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md text-[10px] font-bold tabular-nums bg-black/5 dark:bg-white/10">
-              {hours.toFixed(1)}h
+              {fmtH(hours)}
             </span>
           </div>
           <span className={`sm:hidden absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full ${style.dot}`} />
@@ -433,7 +439,7 @@ function WeekCell({ date, hours, tasks, bounds, projectColors, today, onClick }:
         </div>
         {hours > 0 && (
           <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md text-[10px] font-bold tabular-nums bg-black/5 dark:bg-white/10">
-            {hours.toFixed(1)}h
+            {fmtH(hours)}
           </span>
         )}
       </div>
@@ -593,7 +599,7 @@ function DayCard({ date, hours, tasks, bounds, projectColors, onOpen }: {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <div className="text-4xl font-bold tabular-nums">
-              {hours.toFixed(1)}<span className="text-base font-medium opacity-70 ml-0.5">h</span>
+              {fmtH(hours)}
             </div>
             <div className="text-[11px] opacity-70">
               {hours === 0

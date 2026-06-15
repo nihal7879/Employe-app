@@ -4,8 +4,10 @@ export const PROGRESS_STATUSES = ['Completed', 'In Progress', 'Pending'] as cons
 export type ProgressStatus = (typeof PROGRESS_STATUSES)[number];
 
 export class CreateDailyTaskDto {
-  @IsInt() client_id: number;
-  @IsInt() project_id: number;
+  // Client/project are optional — meeting-type activities (e.g. General Meeting)
+  // aren't tied to a specific client or project. The DB columns are nullable.
+  @IsOptional() @IsInt() client_id?: number;
+  @IsOptional() @IsInt() project_id?: number;
   @IsInt() activity_id: number;
   @IsNumber() @Min(0) @Max(24) hours_spent: number;
   @IsString() @MaxLength(255) task_title: string;
