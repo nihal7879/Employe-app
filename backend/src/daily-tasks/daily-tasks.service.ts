@@ -242,6 +242,28 @@ export class DailyTasksService {
       throw new ConflictException('End time must be after start time.');
     }
 
+    // Prevent the edited window from overlapping another of the employee's tasks
+    // on the same date — the same rule create() enforces, but excluding this row
+    // and using the effective (post-edit) times/date. Without this, editing was
+    // able to save an overlapping time slot (employee and manager alike).
+    // TIME() comparison keeps boundaries exact (a task ending 17:00 may touch one
+    // starting 17:00) despite stored "HH:MM:SS" vs edited "HH:MM" values.
+    if (effStart && effEnd) {
+      const effDate = (dto.task_date || String(existing.task_date)).slice(0, 10);
+      const clash = await this.db('daily_tasks')
+        .where({ employee_id: existing.employee_id, is_deleted: false })
+        .andWhere('task_date', effDate)
+        .andWhereNot('id', id)
+        .whereRaw('TIME(start_time) < TIME(?)', [effEnd])
+        .whereRaw('TIME(end_time) > TIME(?)', [effStart])
+        .first('id', 'start_time', 'end_time', 'task_title');
+      if (clash) {
+        throw new ConflictException(
+          `This time slot overlaps an existing task (${clash.start_time}–${clash.end_time}: "${clash.task_title}"). Pick a different time.`,
+        );
+      }
+    }
+
     const auditFields = ctx ? {
       updated_ip: ctx.ip,
       updated_gps: ctx.gps,
