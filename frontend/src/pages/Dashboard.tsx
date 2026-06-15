@@ -9,7 +9,7 @@ import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   LineChart, Line,
-  RadialBarChart, RadialBar,
+  RadialBarChart, RadialBar, PolarAngleAxis,
 } from 'recharts';
 import StatCard from '../components/StatCard';
 import SegmentedBar, { Segment } from '../components/SegmentedBar';
@@ -317,7 +317,10 @@ export default function Dashboard() {
               <div className="h-24 w-24">
                 <ResponsiveContainer>
                   <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ v: productivityPct }]} startAngle={90} endAngle={-270}>
-                    <RadialBar dataKey="v" cornerRadius={10} fill="url(#ring)" background={{ fill: 'rgba(15,23,42,0.06)' }} />
+                    {/* Fixed 0–100 scale so the ring fills proportionally (e.g.
+                        4h of an 8h day = half), not full for any single value. */}
+                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                    <RadialBar dataKey="v" cornerRadius={10} fill="url(#ring)" background={{ fill: 'rgba(148,163,184,0.22)' }} />
                     <defs>
                       <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
                         <stop offset="0%" stopColor="#7C3AED" />
