@@ -427,16 +427,26 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     return Math.round((mins / 60) * 100) / 100;
   }, [startTime, endTime]);
 
+  // Meeting-type activities (e.g. General Meeting) aren't tied to a client/
+  // project, so those fields are optional only then — required otherwise.
+  const selectedActivity = activities.find((a) => String(a.id) === activityId);
+  const clientOptional = /meeting/i.test(selectedActivity?.activity_name || '');
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!task) return;
+    // Everything is required except Reference. Client/project are required too,
+    // unless the activity is a meeting type (then they're optional).
+    if (!clientOptional && (!clientId || !projectId)) {
+      toast.error('Select client and project'); return;
+    }
+    if (!activityId) { toast.error('Select an activity'); return; }
+    if (!startTime || !endTime) { toast.error('Enter start and end time'); return; }
+    if (endTime <= startTime) { toast.error('End time must be after start time'); return; }
+    if (!title.trim()) { toast.error('Enter a task title'); return; }
     if (!progress) { toast.error('Select a progress status'); return; }
-    if ((startTime && !endTime) || (!startTime && endTime)) {
-      toast.error('Set both start and end time'); return;
-    }
-    if (startTime && endTime && endTime <= startTime) {
-      toast.error('End time must be after start time'); return;
-    }
+    if (!assignedBy.trim()) { toast.error('Enter who assigned this'); return; }
+    if (!desc.trim()) { toast.error('Enter a description'); return; }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
@@ -477,14 +487,21 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
           <div className="text-xs text-slate-500 dark:text-slate-400">Date: {task.task_date}</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="label">Client</label>
+              <label className="label">Client{clientOptional && <span className="text-slate-400 font-normal"> (optional)</span>}</label>
               <Select value={clientId} options={clientOptions} placeholder="Select client" searchable searchPlaceholder="Search client…"
-                onChange={(v) => { setClientId(v); setProjectId(''); }} />
+                onChange={(v) => {
+                  const keepProject = projects.some((p) => String(p.id) === projectId && p.client_id === Number(v));
+                  setClientId(v); if (!keepProject) setProjectId('');
+                }} />
             </div>
             <div>
-              <label className="label">Project</label>
+              <label className="label">Project{clientOptional && <span className="text-slate-400 font-normal"> (optional)</span>}</label>
               <Select value={projectId} options={projectOptions} placeholder="Select project" searchable searchPlaceholder="Search project…"
-                onChange={setProjectId} />
+                onChange={(v) => {
+                  // A project belongs to one client — auto-fill it so they can't disagree.
+                  const proj = projects.find((p) => String(p.id) === v);
+                  setProjectId(v); if (proj) setClientId(String(proj.client_id));
+                }} />
             </div>
             <div>
               <label className="label">Activity</label>
