@@ -242,7 +242,16 @@ export default function Tasks() {
             <label className="label">Project{clientOptional && <span className="text-ink-mute font-normal"> (optional)</span>}</label>
             <Select value={form.project_id} options={projectOptions} placeholder="Select project"
               searchable searchPlaceholder="Search project…"
-              onChange={(v) => setForm({ ...form, project_id: v })} />
+              onChange={(v) => {
+                // A project belongs to exactly one client — selecting it auto-fills
+                // (and pins) that client so the two fields can't disagree.
+                const proj = projects.find((p) => String(p.id) === v);
+                setForm({
+                  ...form,
+                  project_id: v,
+                  client_id: proj ? String(proj.client_id) : form.client_id,
+                });
+              }} />
           </div>
           <div>
             <label className="label">Activity</label>
