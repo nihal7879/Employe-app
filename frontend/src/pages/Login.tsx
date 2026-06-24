@@ -1,17 +1,20 @@
 import { GoogleLogin } from '@react-oauth/google';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { ShieldCheck, Check, Rocket, Sparkles, Clock } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
-import { useAuth } from '../auth/AuthContext';
+import { ShieldCheck, Check, Rocket, Sparkles, Clock, UserCircle2 } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { useAuth, type IdentitySelection } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import illustration from '../assets/login-illustration.svg';
 
 export default function Login() {
-  const { user, loginWithGoogleCredential } = useAuth();
+  const { user, loginWithGoogleCredential, selectIdentity } = useAuth();
   const { lockLight } = useTheme();
   const nav = useNavigate();
+  // Set when a shared Google account signs in — drives the compulsory picker.
+  const [pending, setPending] = useState<IdentitySelection | null>(null);
+  const [selecting, setSelecting] = useState<number | null>(null);
 
   // Login is always light. lockLight() ref-counts a light-mode override on
   // ThemeProvider so the dark class can't get re-applied after we strip it
@@ -19,6 +22,26 @@ export default function Login() {
   useEffect(() => lockLight(), [lockLight]);
 
   if (user) return <Navigate to="/" replace />;
+
+  const pickIdentity = async (id: number) => {
+    if (!pending || selecting != null) return;
+    setSelecting(id);
+    try {
+      await selectIdentity(pending.selectionToken, id);
+      toast.success('Signed in');
+      nav('/', { replace: true });
+    } catch (e: any) {
+      setSelecting(null);
+      if (e?.isNetworkError) return;
+      // Selection token expired or rejected → make them sign in again.
+      if (e?.response?.status === 401) {
+        setPending(null);
+        toast.error('Selection expired — please sign in again.');
+        return;
+      }
+      toast.error(e.response?.data?.message || 'Could not continue');
+    }
+  };
 
   return (
     <div className="relative h-screen w-full overflow-hidden lg:grid lg:grid-cols-[1.1fr_1fr] bg-[#F7F8FB] dark:bg-[#0B1020]">
@@ -188,7 +211,12 @@ export default function Login() {
               logo_alignment="center"
               onSuccess={async (resp) => {
                 try {
-                  await loginWithGoogleCredential(resp.credential || '');
+                  const result = await loginWithGoogleCredential(resp.credential || '');
+                  // Shared Google account → must pick an identity before entering.
+                  if (result?.needsSelection) {
+                    setPending(result);
+                    return;
+                  }
                   toast.success('Signed in');
                   nav('/', { replace: true });
                 } catch (e: any) {
@@ -213,6 +241,56 @@ export default function Login() {
           </p>
         </motion.div>
       </div>
+
+      {/* Compulsory identity picker — shown only when a shared Google account
+          signs in. No close button and a non-dismissible backdrop: the user
+          MUST pick who they are before entering, so their data stays separate. */}
+      <AnimatePresence>
+        {pending && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.18 }}
+              className="w-full max-w-sm rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200 p-6"
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="h-12 w-12 rounded-2xl bg-brand-500/15 text-brand-600 flex items-center justify-center">
+                  <UserCircle2 size={24} />
+                </div>
+                <h2 className="mt-4 text-lg font-bold text-slate-900">Who's signing in?</h2>
+                <p className="mt-1.5 text-sm text-slate-500">
+                  This account is shared. Pick your name so your tasks and time are logged to you.
+                </p>
+              </div>
+
+              <div className="mt-6 space-y-2.5">
+                {pending.options.map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => pickIdentity(o.id)}
+                    disabled={selecting != null}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-slate-200 hover:border-brand-400 hover:bg-brand-50/60 text-left transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <span className="h-10 w-10 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center shrink-0">
+                      {o.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-slate-900 truncate">{o.name}</span>
+                      <span className="block text-xs text-slate-400 truncate">{o.email}</span>
+                    </span>
+                    {selecting === o.id && (
+                      <span className="ml-auto h-4 w-4 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

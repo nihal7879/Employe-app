@@ -154,6 +154,24 @@ export class DailyTasksService {
     return start < floor;
   }
 
+  // Reject a task whose [start,end] span exceeds the configured maximum. Times
+  // may be "HH:MM" or "HH:MM:SS"; we compare at minute granularity.
+  private assertWithinMaxDuration(startTime: string, endTime: string): void {
+    const toMins = (t: string) => {
+      const m = t.match(/^(\d{1,2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+    };
+    const start = toMins(startTime);
+    const end = toMins(endTime);
+    if (start < 0 || end < 0) return;
+    const maxMins = Math.round(APP_CONFIG.maxTaskHours * 60);
+    if (end - start > maxMins) {
+      throw new ConflictException(
+        `A task can be at most ${APP_CONFIG.maxTaskHours} hours long. Split longer work into multiple tasks.`,
+      );
+    }
+  }
+
   async create(employee_id: number, ctx: RequestContext, dto: CreateDailyTaskDto) {
     const perms = await this.employeePerms(employee_id);
     const taskDate = String(dto.task_date).slice(0, 10);
@@ -165,6 +183,12 @@ export class DailyTasksService {
     // an overnight task (daily tasks live within a single work day).
     if (dto.start_time && dto.end_time && dto.end_time <= dto.start_time) {
       throw new ConflictException('End time must be after start time.');
+    }
+
+    // Cap the span of a single task. Longer work must be split into multiple
+    // entries so the timeline stays granular.
+    if (dto.start_time && dto.end_time) {
+      this.assertWithinMaxDuration(dto.start_time, dto.end_time);
     }
 
     // Reject if another non-deleted task for this employee on the same date
@@ -240,6 +264,11 @@ export class DailyTasksService {
     const effEnd = (dto.end_time ?? existing.end_time) as string | null;
     if (effStart && effEnd && String(effEnd).slice(0, 5) <= String(effStart).slice(0, 5)) {
       throw new ConflictException('End time must be after start time.');
+    }
+
+    // Same max-duration cap as create(), using the effective (post-edit) times.
+    if (effStart && effEnd) {
+      this.assertWithinMaxDuration(String(effStart), String(effEnd));
     }
 
     // Prevent the edited window from overlapping another of the employee's tasks

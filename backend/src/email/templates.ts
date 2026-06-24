@@ -34,8 +34,20 @@ export function employeeDailyReportEmail(opts: {
   first_login?: string | null;
   last_logout?: string | null;
 }) {
-  const { name, date, total_hours, tasks, first_login = null, last_logout = null } = opts;
+  const { name, date, total_hours, tasks: rawTasks, first_login = null, last_logout = null } = opts;
   const loginMin = toMin(first_login);
+
+  // Show tasks in chronological order by start time, not creation order — so a
+  // 9–11 / 2–4 / 11–2 entry sequence reads 9–11, 11–2, 2–4. Untimed tasks sort
+  // last, keeping their original relative order.
+  const tasks = [...rawTasks].sort((a, b) => {
+    const sa = toMin(a.start_time);
+    const sb = toMin(b.start_time);
+    if (sa == null && sb == null) return 0;
+    if (sa == null) return 1;
+    if (sb == null) return -1;
+    return sa - sb;
+  });
 
   // Flag any task that started before the employee's first login of the day.
   // With the login-grace window these are allowed, but they're surfaced here

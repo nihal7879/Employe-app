@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthGuard } from '@nestjs/passport';
 import type { CookieOptions, Request, Response } from 'express';
@@ -83,7 +83,49 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const profile = await this.auth.verifyGoogleIdToken(body.credential);
+
+    // Shared login (one Google account used by several people): don't issue a
+    // session yet — hand back the list of identities so the frontend can force
+    // a "who are you?" picker. No cookie, no Login row until they choose.
+    const sharedIds = this.auth.sharedMemberIdsFor(profile.email);
+    if (sharedIds) {
+      const options = await this.auth.membersForSelection(sharedIds);
+      if (options.length > 1) {
+        const selectionToken = this.auth.signSelectionToken(
+          profile.email,
+          options.map((o) => o.id),
+        );
+        return { needsSelection: true, options, selectionToken };
+      }
+      // Only one active member is configured — no ambiguity, log straight in.
+      if (options.length === 1) {
+        const { access_token, user } = await this.auth.loginAsMember(options[0].id, getRequestContext(req));
+        this.setAuthCookie(res, access_token);
+        return { user };
+      }
+      // Zero active members → fall through to the normal (will 401) path.
+    }
+
     const { access_token, user } = await this.auth.loginWithGoogle(profile, getRequestContext(req));
+    this.setAuthCookie(res, access_token);
+    return { user };
+  }
+
+  // Second step of a shared login: the user picked which identity they are.
+  // The selectionToken proves the Google auth succeeded and pins the allowed
+  // ids, so an arbitrary employeeId can't be smuggled in here.
+  @Public()
+  @Post('select-identity')
+  async selectIdentity(
+    @Body() body: { selectionToken: string; employeeId: number },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const claim = this.auth.verifySelectionToken(body.selectionToken);
+    if (!claim || !claim.ids.includes(Number(body.employeeId))) {
+      throw new UnauthorizedException('Invalid identity selection');
+    }
+    const { access_token, user } = await this.auth.loginAsMember(Number(body.employeeId), getRequestContext(req));
     this.setAuthCookie(res, access_token);
     return { user };
   }

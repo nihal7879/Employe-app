@@ -60,6 +60,14 @@ export const APP_CONFIG = {
   // How many days back an employee with the `allow_backdated_tasks` permission
   // may log. Mirrors the backend's BACKDATE_MAX_DAYS — keep them in sync.
   backdateMaxDays: envNum('VITE_BACKDATE_MAX_DAYS', 7),
+
+  // -----------------------------------------------------------------------
+  // Max task duration
+  // -----------------------------------------------------------------------
+  // Longest a single task may be, in hours. Mirrors the backend's
+  // MAX_TASK_HOURS — keep them in sync. Users split longer work into multiple
+  // tasks; the form blocks anything over this before it reaches the server.
+  maxTaskHours: envNum('VITE_MAX_TASK_HOURS', 1.5),
 };
 
 export type AppConfig = typeof APP_CONFIG;

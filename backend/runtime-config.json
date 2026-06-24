@@ -4,6 +4,10 @@
   "dayStartLatest": "23:59:59",
   "loginGraceMinutes": 120,
   "backdateMaxDays": 7,
+  "maxTaskHours": 1.5,
   "gpsBackfillWindowMinutes": 10,
-  "jwtExpiresIn": "7d"
+  "jwtExpiresIn": "7d",
+  "sharedLogins": {
+    "frontend.developer@millicent.in": [9, 10]
+  }
 }
