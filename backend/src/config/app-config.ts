@@ -164,10 +164,24 @@ export const APP_CONFIG = {
   // change needed — the members are existing employee rows.
   // LIVE-EDITABLE via `sharedLogins` in runtime-config.json, e.g.:
   //   "sharedLogins": { "frontend.developer@millicent.in": [9, 10] }
+  // Precedence: runtime-config.json → SHARED_LOGINS env var (a JSON string) →
+  // empty. The env fallback matters on serverless hosts (e.g. Vercel) where the
+  // JSON file isn't present/writable, so config must come from the environment.
   get sharedLogins(): Record<string, number[]> {
     const raw = readRuntimeConfig()['sharedLogins'];
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
       return raw as Record<string, number[]>;
+    }
+    const env = process.env.SHARED_LOGINS;
+    if (env && env.length > 0) {
+      try {
+        const parsed = JSON.parse(env);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, number[]>;
+        }
+      } catch {
+        /* malformed JSON → fall through to empty */
+      }
     }
     return {};
   },
