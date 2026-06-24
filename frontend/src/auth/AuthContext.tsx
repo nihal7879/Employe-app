@@ -27,10 +27,21 @@ const SESSION_ALIVE_KEY = 'em_tab_alive';
 const SESSION_ALIVE_INTERVAL_MS = 5_000;
 const SESSION_ALIVE_STALE_MS    = 30_000;
 
+// One selectable identity behind a shared Google login.
+export interface IdentityOption { id: number; name: string; email: string; }
+// loginWithGoogleCredential resolves to this when the Google account is shared
+// by several people — the caller must show a picker and call selectIdentity.
+export interface IdentitySelection {
+  needsSelection: true;
+  options: IdentityOption[];
+  selectionToken: string;
+}
+
 interface AuthState {
   user: User | null;
   loading: boolean;
-  loginWithGoogleCredential: (credential: string) => Promise<void>;
+  loginWithGoogleCredential: (credential: string) => Promise<IdentitySelection | void>;
+  selectIdentity: (selectionToken: string, employeeId: number) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -96,21 +107,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('pagehide', onPageHide);
   }, [user]);
 
-  const loginWithGoogleCredential = async (credential: string) => {
-    // Permission prompt only — resolves on Allow click without waiting for
-    // actual coordinates. Login is NOT blocked on GPS acquisition; the
-    // Navbar badge surfaces "Locating…" while the fix is being captured.
-    await requireLocationGrant();
-
-    const { data } = await api.post('/auth/google', { credential });
-    setStoredUser(JSON.stringify(data.user));
+  // Shared finalize step for both a normal login and a picked shared-login
+  // identity: persist the user, refresh the cross-tab alive marker, and kick
+  // off the background GPS backfill.
+  const finalizeSession = (u: User) => {
+    setStoredUser(JSON.stringify(u));
     // Refresh the cross-tab alive marker BEFORE setUser so the stale-check
     // effect (below) doesn't see a leftover marker from a previous session
     // (e.g. yesterday's, after an overnight browser close) and immediately
     // force-logout this brand-new sign-in. Without this, the first login of
     // the day bounces straight back to /login and only the second succeeds.
     try { localStorage.setItem(SESSION_ALIVE_KEY, String(Date.now())); } catch { /* noop */ }
-    setUser(data.user);
+    setUser(u);
 
     // Background: poll for coords up to the configured window and PATCH the
     // just-created Login audit row when they land. Server's backfill SQL
@@ -121,6 +129,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!gps) return;
       try { await api.patch('/audit/login/backfill-gps', { gps }); } catch { /* ignore */ }
     })();
+  };
+
+  const loginWithGoogleCredential = async (credential: string): Promise<IdentitySelection | void> => {
+    // Permission prompt only — resolves on Allow click without waiting for
+    // actual coordinates. Login is NOT blocked on GPS acquisition; the
+    // Navbar badge surfaces "Locating…" while the fix is being captured.
+    await requireLocationGrant();
+
+    const { data } = await api.post('/auth/google', { credential });
+    // Shared Google account → the caller must show the identity picker and
+    // finish via selectIdentity(). No session exists yet.
+    if (data?.needsSelection) {
+      return { needsSelection: true, options: data.options, selectionToken: data.selectionToken };
+    }
+    finalizeSession(data.user);
+  };
+
+  // Finish a shared login once the user has picked who they are.
+  const selectIdentity = async (selectionToken: string, employeeId: number) => {
+    const { data } = await api.post('/auth/select-identity', { selectionToken, employeeId });
+    finalizeSession(data.user);
   };
 
   const logout = useCallback(async () => {
@@ -181,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, didStaleCheck, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithGoogleCredential, logout }}>
+    <AuthContext.Provider value={{ user, loading, loginWithGoogleCredential, selectIdentity, logout }}>
       {children}
     </AuthContext.Provider>
   );

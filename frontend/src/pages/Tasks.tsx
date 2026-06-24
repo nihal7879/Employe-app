@@ -12,6 +12,24 @@ import { useAuth } from '../auth/AuthContext';
 import { APP_CONFIG } from '../config/app-config';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
+// Minutes-since-midnight → "HH:MM" (24h), clamped to within the day.
+const minsToHM = (mins: number) => {
+  const t = Math.max(0, Math.min(23 * 60 + 59, mins));
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+// "HH:MM" + N minutes, clamped to the end of the day.
+const addMinHM = (hm: string, mins: number) => {
+  const [h, m] = hm.split(':').map(Number);
+  return minsToHM(h * 60 + m + mins);
+};
+// A fresh start/end pair anchored to right now. Start is rounded UP to the next
+// 5-minute mark (e.g. 2:34 → 2:35, 2:29 → 2:30), and end = start + 15 min.
+const autoTimes = () => {
+  const d = new Date();
+  const rounded = Math.min(23 * 60 + 55, Math.ceil((d.getHours() * 60 + d.getMinutes()) / 5) * 5);
+  const start = minsToHM(rounded);
+  return { start_time: start, end_time: addMinHM(start, 15) };
+};
 // Format a decimal-hours string ("1.50") as "1h 30m" for display.
 const fmtHM = (hours: string) => {
   const total = Math.round(parseFloat(hours) * 60);
@@ -34,17 +52,26 @@ export default function Tasks() {
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  // Everyone who can be picked in "Assigned By" — all employees + admins. The
+  // field still accepts free text for anyone not on the list.
+  const [people, setPeople] = useState<{ id: number; name: string }[]>([]);
   // How many days back a backdater may log. Admin-tunable at runtime, so we read
   // it from the server (the build-time const is only the initial fallback).
   const [backdateMaxDays, setBackdateMaxDays] = useState(APP_CONFIG.backdateMaxDays);
+  // Longest a single task may be. Read live from the server (runtime-config.json)
+  // so editing the JSON updates the limit without a frontend rebuild; the
+  // build-time const is just the initial fallback.
+  const [maxTaskHours, setMaxTaskHours] = useState(APP_CONFIG.maxTaskHours);
 
   const [params, setParams] = useSearchParams();
   const [form, setForm] = useState({
     client_id: '', project_id: '', activity_id: '',
     hours_spent: '', task_title: params.get('title') || '', description: params.get('desc') || '',
     assigned_by: '', reference: '',
-    task_date: todayStr(), start_time: '', end_time: '',
-    progress_status: '',
+    // Auto start = now, end = +15 min (the user can still adjust). Progress
+    // defaults to Pending.
+    task_date: todayStr(), ...autoTimes(),
+    progress_status: 'Pending',
   });
 
   // Pre-fill from the "Add to DWR" deep link (client inbox). Clear the params so
@@ -73,14 +100,17 @@ export default function Tasks() {
     [projects, form.client_id],
   );
 
-  // Meeting-type activities (e.g. General Meeting) aren't tied to a specific
-  // client/project, so those fields become optional when one is selected.
+  // Only a *General Meeting* is detached from a client/project — its client and
+  // project are optional. A plain "Meeting" still requires both.
   const selectedActivity = activities.find((a) => String(a.id) === form.activity_id);
-  const clientOptional = /meeting/i.test(selectedActivity?.activity_name || '');
+  const clientOptional = /general\s*meeting/i.test(selectedActivity?.activity_name || '');
 
   const clientOptions = clients.map((c) => ({ label: c.client_name, value: String(c.id) }));
   const projectOptions = filteredProjects.map((p) => ({ label: p.project_name, value: String(p.id) }));
   const activityOptions = activities.map((a) => ({ label: a.activity_name, value: String(a.id) }));
+  // Assigned-by uses the name as both label and value, so a picked person and a
+  // typed-in name are stored the same way.
+  const assigneeOptions = people.map((p) => ({ label: p.name, value: p.name }));
 
   const load = async () => {
     const [c, a] = await Promise.all([
@@ -89,8 +119,10 @@ export default function Tasks() {
     ]);
     setActivities(a.data);
     // Managers may only log against the projects the admin assigned to them, so
-    // their client/project pickers are scoped to those assignments. Everyone
-    // else (employees, admins) sees the full project list.
+    // their client/project pickers are scoped to those assignments. But if the
+    // admin hasn't assigned ANY project to the manager, fall back to the full
+    // list (an unassigned manager shouldn't be locked out of logging). Everyone
+    // else (employees, admins) always sees the full project list.
     if (user?.role === 'Manager') {
       const { data } = await api.get('/managers/me/assignments');
       const projs: Project[] = (data.projects || []).map((p: any) => ({
@@ -98,9 +130,14 @@ export default function Tasks() {
         project_code: p.project_code, project_name: p.project_name,
         project_status: 'Active', is_active: true,
       }));
-      setProjects(projs);
-      const assignedClientIds = new Set(projs.map((p) => p.client_id));
-      setClients((c.data as Client[]).filter((cl) => assignedClientIds.has(cl.id)));
+      if (projs.length) {
+        setProjects(projs);
+        const assignedClientIds = new Set(projs.map((p) => p.client_id));
+        setClients((c.data as Client[]).filter((cl) => assignedClientIds.has(cl.id)));
+      } else {
+        const p = await api.get('/projects');
+        setClients(c.data); setProjects(p.data);
+      }
     } else {
       const p = await api.get('/projects');
       setClients(c.data); setProjects(p.data);
@@ -114,8 +151,15 @@ export default function Tasks() {
       .then((r) => setDayStart(r.data?.earliest_task_time || null))
       .catch(() => setDayStart(null));
     api.get('/config')
-      .then((r) => { if (r.data?.backdateMaxDays != null) setBackdateMaxDays(Number(r.data.backdateMaxDays)); })
+      .then((r) => {
+        if (r.data?.backdateMaxDays != null) setBackdateMaxDays(Number(r.data.backdateMaxDays));
+        if (r.data?.maxTaskHours != null) setMaxTaskHours(Number(r.data.maxTaskHours));
+      })
       .catch(() => {});
+    // All employees + admins, for the "Assigned By" suggestions.
+    api.get('/employees', { params: { include_admin: 'true' } })
+      .then((r) => setPeople((r.data as { id: number; name: string }[]) || []))
+      .catch(() => setPeople([]));
   }, []);
 
   // The login-time floor only applies to today's entries logged normally.
@@ -151,6 +195,9 @@ export default function Tasks() {
     if (form.end_time <= form.start_time) {
       toast.error('End time must be after start time'); return;
     }
+    if (parseFloat(form.hours_spent) > maxTaskHours) {
+      toast.error(`A task can be at most ${maxTaskHours} hours. Split it into multiple tasks.`); return;
+    }
     if (!form.task_title.trim()) {
       toast.error('Enter a task title'); return;
     }
@@ -180,7 +227,7 @@ export default function Tasks() {
         progress_status: form.progress_status,
       });
       toast.success('Task logged');
-      setForm({ ...form, task_title: '', description: '', hours_spent: '', start_time: '', end_time: '', assigned_by: '', reference: '', progress_status: '' });
+      setForm({ ...form, task_title: '', description: '', hours_spent: '', ...autoTimes(), assigned_by: '', reference: '', progress_status: 'Pending' });
     } catch (e: any) {
       if (e?.reason || e?.isNetworkError) { setSubmitting(false); return; }
       const msg = e.response?.data?.message;
@@ -277,12 +324,13 @@ export default function Tasks() {
                 {form.hours_spent ? fmtHM(form.hours_spent) : 'Auto'}
               </span>
             </div>
-            <p className="mt-1 text-[11px] text-ink-mute">Calculated from start &amp; end time</p>
+            <p className="mt-1 text-[11px] text-ink-mute">Auto from start &amp; end · max {maxTaskHours}h per task</p>
           </div>
           <div>
             <label className="label">Assigned By</label>
-            <input maxLength={255} placeholder="Who assigned this?"
-              value={form.assigned_by} onChange={(e) => setForm({ ...form, assigned_by: e.target.value })} />
+            <Select value={form.assigned_by} options={assigneeOptions} placeholder="Select or type a name"
+              searchable searchPlaceholder="Search or type a name…" allowCustom
+              onChange={(v) => setForm({ ...form, assigned_by: v })} />
           </div>
           <div>
             <label className="label">Progress Status</label>

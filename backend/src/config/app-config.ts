@@ -123,6 +123,15 @@ export const APP_CONFIG = {
   get backdateMaxDays(): number { return runtimeNum('backdateMaxDays', 'BACKDATE_MAX_DAYS', 7); },
 
   // -----------------------------------------------------------------------
+  // Max task duration
+  // -----------------------------------------------------------------------
+  // The longest a single task may be, in hours. Users are expected to split
+  // longer work into multiple entries (keeps the timeline granular). Enforced
+  // server-side in create/update; the frontend mirrors it for instant feedback.
+  // LIVE-EDITABLE via maxTaskHours in runtime-config.json.
+  get maxTaskHours(): number { return runtimeNum('maxTaskHours', 'MAX_TASK_HOURS', 1.5); },
+
+  // -----------------------------------------------------------------------
   // GPS audit
   // -----------------------------------------------------------------------
   // After a Login row is inserted, the frontend keeps trying to capture
@@ -142,6 +151,26 @@ export const APP_CONFIG = {
   // when the JWT module is set up at startup, so a change only affects tokens
   // signed after the next restart, not already-issued ones.
   get jwtExpiresIn(): string { return runtimeStr('jwtExpiresIn', 'JWT_EXPIRES_IN', '7d'); },
+
+  // -----------------------------------------------------------------------
+  // Shared Google logins → multiple employee identities
+  // -----------------------------------------------------------------------
+  // Some people share ONE Google sign-in account (e.g. a single
+  // frontend.developer@ mailbox used by two developers whose own aliases
+  // can't be turned into separate Google accounts). Map that login email to
+  // the employee IDs that share it; when someone signs in with that email the
+  // app forces a "who are you?" identity picker and issues the session for the
+  // chosen employee, so each person's tasks/attendance stay separate. No DB
+  // change needed — the members are existing employee rows.
+  // LIVE-EDITABLE via `sharedLogins` in runtime-config.json, e.g.:
+  //   "sharedLogins": { "frontend.developer@millicent.in": [9, 10] }
+  get sharedLogins(): Record<string, number[]> {
+    const raw = readRuntimeConfig()['sharedLogins'];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return raw as Record<string, number[]>;
+    }
+    return {};
+  },
 };
 
 export type AppConfig = typeof APP_CONFIG;

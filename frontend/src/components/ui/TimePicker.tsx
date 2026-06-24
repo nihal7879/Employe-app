@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, X } from 'lucide-react';
+import { Clock, X, ChevronUp, ChevronDown } from 'lucide-react';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')); // 01..12
 const MINUTES = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
@@ -30,7 +30,7 @@ function timeToMins(t?: string): number {
 }
 
 export default function TimePicker({
-  value, onChange, placeholder = 'Pick a time', clearable = true, className = '', minTime,
+  value, onChange, placeholder = 'Pick a time', clearable = true, className = '', minTime, step = 5,
 }: {
   value?: string;
   onChange: (v: string) => void;
@@ -40,6 +40,8 @@ export default function TimePicker({
   // Earliest selectable time as "HH:MM" or "HH:MM:SS" (24-hour). Buttons that
   // would produce a value below this are disabled.
   minTime?: string | null;
+  // Minutes added/removed per ArrowUp/ArrowDown press while the field is focused.
+  step?: number;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -91,6 +93,24 @@ export default function TimePicker({
     commit(cur.h12 ? Number(cur.h12) : 12, cur.minute || '00', p);
   };
 
+  // Arrow keys nudge the time by `step` minutes while the trigger is focused —
+  // no need to open the dropdown. Empty starts from the floor (or 9:00), and we
+  // never go below minTime or outside the day.
+  const stepBy = (delta: number) => {
+    let base = timeToMins(value);
+    if (base < 0) base = minMins >= 0 ? minMins : 9 * 60;
+    let next = base + delta;
+    next = Math.max(0, Math.min(23 * 60 + 59, next));
+    if (minMins >= 0 && next < minMins) next = minMins;
+    const h = Math.floor(next / 60);
+    const m = next % 60;
+    onChange(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowUp') { e.preventDefault(); stepBy(step); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); stepBy(-step); }
+  };
+
   const display = value && value.includes(':') ? `${cur.h12}:${cur.minute} ${cur.period}` : '';
 
   return (
@@ -98,6 +118,8 @@ export default function TimePicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onKeyDown}
+        title="Use ↑ / ↓ to adjust the time"
         className={`w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.04] border text-sm transition-all text-left
           ${open ? 'border-brand-500 shadow-[0_0_0_3px_rgba(124,58,237,0.18)]' : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'}`}
       >
@@ -110,6 +132,28 @@ export default function TimePicker({
             <X size={14} />
           </span>
         )}
+        {/* In-place steppers — adjust the time without opening the dropdown.
+            stopPropagation keeps the click from toggling the panel. */}
+        <span className="flex flex-col shrink-0 -my-1.5">
+          <span
+            role="button"
+            tabIndex={-1}
+            title="Later (↑)"
+            onClick={(e) => { e.stopPropagation(); stepBy(step); }}
+            className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 leading-none"
+          >
+            <ChevronUp size={14} />
+          </span>
+          <span
+            role="button"
+            tabIndex={-1}
+            title="Earlier (↓)"
+            onClick={(e) => { e.stopPropagation(); stepBy(-step); }}
+            className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 leading-none"
+          >
+            <ChevronDown size={14} />
+          </span>
+        </span>
       </button>
 
       <AnimatePresence>
@@ -119,7 +163,7 @@ export default function TimePicker({
             transition={{ duration: 0.15 }}
             className="absolute left-0 mt-2 z-50 rounded-2xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl p-1.5 flex gap-0.5"
           >
-            <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100 dark:border-white/10">
+            <div className="h-48 overflow-y-auto thin-scrollbar pr-1 border-r border-slate-100 dark:border-white/10">
               {HOURS.map((hh) => {
                 const dis = hourDisabled(hh);
                 return (
@@ -139,7 +183,7 @@ export default function TimePicker({
                 );
               })}
             </div>
-            <div className="h-48 overflow-y-auto pr-1 border-r border-slate-100 dark:border-white/10">
+            <div className="h-48 overflow-y-auto thin-scrollbar pr-1 border-r border-slate-100 dark:border-white/10">
               {MINUTES.map((mm) => {
                 const dis = minuteDisabled(mm);
                 return (

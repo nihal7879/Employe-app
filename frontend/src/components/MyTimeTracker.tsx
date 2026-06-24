@@ -11,6 +11,7 @@ import ConfirmDialog from './ConfirmDialog';
 import Modal from './Modal';
 import Select from './Select';
 import { Skeleton } from './Skeleton';
+import { APP_CONFIG } from '../config/app-config';
 
 const PROGRESS_OPTIONS = [
   { label: 'Completed', value: 'Completed' },
@@ -389,6 +390,8 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
   const [clients, setClients] = useState<{ id: number; client_name: string }[]>([]);
   const [projects, setProjects] = useState<{ id: number; client_id: number; project_name: string }[]>([]);
   const [activities, setActivities] = useState<{ id: number; activity_name: string }[]>([]);
+  // All employees + admins for the "Assigned By" suggestions (free text still allowed).
+  const [people, setPeople] = useState<{ id: number; name: string }[]>([]);
 
   const trimSeconds = (t?: string) => (t ? t.slice(0, 5) : '');
 
@@ -396,7 +399,7 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     if (!task) return;
     setTitle(task.task_title || '');
     setDesc(task.description || '');
-    setProgress(task.progress_status || '');
+    setProgress(task.progress_status || 'Pending');
     setStartTime(trimSeconds(task.start_time));
     setEndTime(trimSeconds(task.end_time));
     setClientId(task.client_id ? String(task.client_id) : '');
@@ -406,8 +409,13 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     setReference(task.reference || '');
     // Lazy-load lookup data on first open
     if (clients.length === 0) {
-      Promise.all([api.get('/clients'), api.get('/projects'), api.get('/activities')])
-        .then(([c, p, a]) => { setClients(c.data); setProjects(p.data); setActivities(a.data); })
+      Promise.all([
+        api.get('/clients'),
+        api.get('/projects'),
+        api.get('/activities'),
+        api.get('/employees', { params: { include_admin: 'true' } }),
+      ])
+        .then(([c, p, a, e]) => { setClients(c.data); setProjects(p.data); setActivities(a.data); setPeople(e.data || []); })
         .catch(() => {});
     }
     // eslint-disable-next-line
@@ -427,10 +435,10 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     return Math.round((mins / 60) * 100) / 100;
   }, [startTime, endTime]);
 
-  // Meeting-type activities (e.g. General Meeting) aren't tied to a client/
-  // project, so those fields are optional only then — required otherwise.
+  // Only a *General Meeting* is detached from a client/project (its client and
+  // project are optional). A plain "Meeting" still requires both.
   const selectedActivity = activities.find((a) => String(a.id) === activityId);
-  const clientOptional = /meeting/i.test(selectedActivity?.activity_name || '');
+  const clientOptional = /general\s*meeting/i.test(selectedActivity?.activity_name || '');
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -443,6 +451,9 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
     if (!activityId) { toast.error('Select an activity'); return; }
     if (!startTime || !endTime) { toast.error('Enter start and end time'); return; }
     if (endTime <= startTime) { toast.error('End time must be after start time'); return; }
+    if (computedHours != null && computedHours > APP_CONFIG.maxTaskHours) {
+      toast.error(`A task can be at most ${APP_CONFIG.maxTaskHours} hours. Split it into multiple tasks.`); return;
+    }
     if (!title.trim()) { toast.error('Enter a task title'); return; }
     if (!progress) { toast.error('Select a progress status'); return; }
     if (!assignedBy.trim()) { toast.error('Enter who assigned this'); return; }
@@ -479,6 +490,8 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
   const clientOptions = clients.map((c) => ({ label: c.client_name, value: String(c.id) }));
   const projectOptions = filteredProjects.map((p) => ({ label: p.project_name, value: String(p.id) }));
   const activityOptions = activities.map((a) => ({ label: a.activity_name, value: String(a.id) }));
+  // Name as both label and value so a picked person and a typed name store alike.
+  const assigneeOptions = people.map((p) => ({ label: p.name, value: p.name }));
 
   return (
     <Modal open={!!task} title="Edit task" onClose={onClose} size="lg">
@@ -530,7 +543,8 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Assigned By</label>
-              <input maxLength={255} value={assignedBy} onChange={(e) => setAssignedBy(e.target.value)} placeholder="Who assigned this?" />
+              <Select value={assignedBy} options={assigneeOptions} placeholder="Select or type a name"
+                searchable searchPlaceholder="Search or type a name…" allowCustom onChange={setAssignedBy} />
             </div>
             <div>
               <label className="label">Reference</label>

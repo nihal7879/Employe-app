@@ -44,7 +44,7 @@ function useDropdownPosition(triggerRef: React.RefObject<HTMLElement>, open: boo
 
 export default function Select({
   value, options, onChange, placeholder = 'Select…', disabled = false, className = '',
-  searchable = false, searchPlaceholder = 'Search…',
+  searchable = false, searchPlaceholder = 'Search…', allowCustom = false,
 }: {
   value: string;
   options: SelectOption[];
@@ -54,6 +54,10 @@ export default function Select({
   className?: string;
   searchable?: boolean;
   searchPlaceholder?: string;
+  // When true, the typed search text can be committed as-is even if it doesn't
+  // match an option (a "Use \"…\"" row appears). Lets the field accept names
+  // that aren't on the list while still offering the list as suggestions.
+  allowCustom?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -88,11 +92,18 @@ export default function Select({
   }, [open, searchable]);
 
   const selected = options.find((o) => o.value === value);
+  // With allowCustom the value may be free text that isn't an option — show it
+  // verbatim on the trigger instead of falling back to the placeholder.
+  const displayLabel = selected ? selected.label : (allowCustom && value ? value : '');
   const visibleOptions = useMemo(() => {
     if (!searchable || !query.trim()) return options;
     const q = query.trim().toLowerCase();
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, query, searchable]);
+  // Offer the typed text as a custom choice when it doesn't exactly match a label.
+  const customQuery = query.trim();
+  const showCustom = allowCustom && customQuery.length > 0
+    && !options.some((o) => o.label.toLowerCase() === customQuery.toLowerCase());
 
   return (
     <div className={`relative ${className}`}>
@@ -107,8 +118,8 @@ export default function Select({
       >
         {selected?.color && <span className="h-2 w-2 rounded-full shrink-0" style={{ background: selected.color }} />}
         {selected?.icon}
-        <span className={`flex-1 text-left truncate ${selected ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
-          {selected ? selected.label : placeholder}
+        <span className={`flex-1 text-left truncate ${displayLabel ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+          {displayLabel || placeholder}
         </span>
         <motion.span animate={{ rotate: open ? 180 : 0 }} className="text-slate-400">
           <ChevronDown size={16} />
@@ -153,7 +164,16 @@ export default function Select({
                 </div>
               )}
               <div className="max-h-72 overflow-y-auto py-1 thin-scrollbar">
-                {visibleOptions.length === 0 && (
+                {showCustom && (
+                  <button
+                    type="button"
+                    onClick={() => { onChange(customQuery); setOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-brand-700 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/15"
+                  >
+                    <span className="flex-1 text-left truncate">Use “{customQuery}”</span>
+                  </button>
+                )}
+                {visibleOptions.length === 0 && !showCustom && (
                   <div className="px-3 py-6 text-center text-sm text-slate-400">
                     {options.length === 0 ? 'No options' : 'No matches'}
                   </div>
