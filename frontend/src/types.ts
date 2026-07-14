@@ -25,6 +25,13 @@ export interface Employee {
   allow_log_anytime?: boolean;
 }
 
+/** Minimal employee shape returned by GET /assigned-tasks/assignees. */
+export interface Assignee {
+  id: number;
+  name: string;
+  employee_code: string;
+}
+
 export interface Client {
   id: number;
   client_name: string;
@@ -54,6 +61,72 @@ export interface Department {
   id: number;
   department_name: string;
   is_active: boolean;
+}
+
+export type AssignedTaskStatus = 'Open' | 'In Progress' | 'Completed';
+export type AssignedTaskPriority = 'Low' | 'Medium' | 'High' | 'Urgent';
+
+export interface AssignedTaskComment {
+  id: number;
+  task_id: number;
+  author_id: number;
+  author_name?: string;
+  body: string;
+  mentions?: string | null;
+  mention_names?: string[];
+  created_at: string;
+}
+
+export interface AssignedTaskActivity {
+  id: number;
+  task_id: number;
+  actor_id: number;
+  actor_name?: string;
+  type: 'Created' | 'StatusChanged' | 'Reassigned' | 'Updated' | 'Commented';
+  from_value?: string | null;
+  to_value?: string | null;
+  note?: string | null;
+  created_at: string;
+}
+
+export interface AssignedTask {
+  id: number;
+  title: string;
+  description?: string;
+  assignee_id: number;
+  assignee_name?: string;
+  assignee_code?: string;
+  assigned_by_id: number;
+  assigned_by_name?: string;
+  client_id?: number | null;
+  client_name?: string;
+  project_id?: number | null;
+  project_name?: string;
+  project_code?: string;
+  status: AssignedTaskStatus;
+  priority: AssignedTaskPriority;
+  employee_type?: string | null;
+  assigned_date: string;
+  start_date?: string | null;
+  due_date?: string | null;
+  completed_at?: string | null;
+  // NULL until the assignee opens the task — drives the "New" highlight.
+  seen_at?: string | null;
+  created_at?: string;
+  comments?: AssignedTaskComment[];
+  activity?: AssignedTaskActivity[];
+}
+
+export interface AppNotification {
+  id: number;
+  recipient_id: number;
+  type: string;
+  title: string;
+  body?: string | null;
+  link?: string | null;
+  task_id?: number | null;
+  is_read: boolean | number;
+  created_at: string;
 }
 
 export interface DailyTask {

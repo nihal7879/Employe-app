@@ -27,7 +27,18 @@ export class CronController {
   async dailyReport(@Headers('authorization') auth?: string) {
     this.assertSecret(auth);
     await this.scheduler.sendDailyEmployeeReports();
+
+    
     return { ok: true, job: 'daily-report' };
+  }
+
+  // 6 AM — one email per employee listing all their overdue tasks.
+  @Public()
+  @Get('overdue-digest')
+  async overdueDigest(@Headers('authorization') auth?: string) {
+    this.assertSecret(auth);
+    await this.scheduler.sendOverdueTaskDigest();
+    return { ok: true, job: 'overdue-digest' };
   }
 
   @Public()

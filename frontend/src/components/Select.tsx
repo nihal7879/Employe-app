@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, Search, X } from 'lucide-react';
 
 export interface SelectOption {
   label: string;
@@ -14,7 +14,7 @@ export interface SelectOption {
 // modals and any sibling element. Position is computed from the trigger's
 // bounding rect and updated on scroll/resize.
 function useDropdownPosition(triggerRef: React.RefObject<HTMLElement>, open: boolean) {
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; dropUp: boolean; maxH: number } | null>(null);
 
   const update = () => {
     const el = triggerRef.current;
@@ -24,7 +24,16 @@ function useDropdownPosition(triggerRef: React.RefObject<HTMLElement>, open: boo
     // window.scrollY is 0 and an absolute-to-body panel lands off-screen and
     // stretches the body (the stray second scrollbar / left shift).
     const r = el.getBoundingClientRect();
-    setRect({ top: r.bottom, left: r.left, width: r.width });
+    const GAP = 6;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const spaceAbove = r.top;
+    // Flip upward when there isn't enough room below and there's more above —
+    // keeps the menu on-screen for fields near the bottom of the viewport.
+    const dropUp = spaceBelow < 260 && spaceAbove > spaceBelow;
+    const maxH = Math.max(140, (dropUp ? spaceAbove : spaceBelow) - GAP - 12);
+    // For dropUp we anchor the panel's bottom to the trigger's top.
+    const top = dropUp ? r.top - GAP : r.bottom + GAP;
+    setRect({ top, left: r.left, width: r.width, dropUp, maxH });
   };
 
   useLayoutEffect(() => {
@@ -44,7 +53,7 @@ function useDropdownPosition(triggerRef: React.RefObject<HTMLElement>, open: boo
 
 export default function Select({
   value, options, onChange, placeholder = 'Select…', disabled = false, className = '',
-  searchable = false, searchPlaceholder = 'Search…', allowCustom = false,
+  searchable = false, searchPlaceholder = 'Search…', allowCustom = false, clearable = false,
 }: {
   value: string;
   options: SelectOption[];
@@ -58,6 +67,8 @@ export default function Select({
   // match an option (a "Use \"…\"" row appears). Lets the field accept names
   // that aren't on the list while still offering the list as suggestions.
   allowCustom?: boolean;
+  // When true, an X button appears while a value is selected to clear it (emits '').
+  clearable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -121,9 +132,21 @@ export default function Select({
         <span className={`flex-1 text-left truncate ${displayLabel ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
           {displayLabel || placeholder}
         </span>
-        <motion.span animate={{ rotate: open ? 180 : 0 }} className="text-slate-400">
-          <ChevronDown size={16} />
-        </motion.span>
+        {clearable && value && !disabled ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            onClick={(e) => { e.stopPropagation(); onChange(''); }}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-white shrink-0"
+            title="Clear"
+          >
+            <X size={15} />
+          </span>
+        ) : (
+          <motion.span animate={{ rotate: open ? 180 : 0 }} className="text-slate-400">
+            <ChevronDown size={16} />
+          </motion.span>
+        )}
       </button>
 
       {/* Dropdown panel — rendered into document.body via portal so it
@@ -141,9 +164,12 @@ export default function Select({
               transition={{ duration: 0.15 }}
               style={{
                 position: 'fixed',
-                top: rect.top + 6,
+                top: rect.top,
                 left: rect.left,
                 width: rect.width,
+                // For an upward menu, shift it up by its own height so its bottom
+                // sits just above the trigger.
+                transform: rect.dropUp ? 'translateY(-100%)' : undefined,
                 zIndex: 1000,
               }}
               className="rounded-xl bg-white dark:bg-bg-deep border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden"
@@ -163,7 +189,7 @@ export default function Select({
                   </div>
                 </div>
               )}
-              <div className="max-h-72 overflow-y-auto py-1 thin-scrollbar">
+              <div className="overflow-y-auto py-1 thin-scrollbar" style={{ maxHeight: Math.min(288, rect.maxH) }}>
                 {showCustom && (
                   <button
                     type="button"

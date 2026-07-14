@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Filter as FilterIcon, Activity as ActIcon, FolderKanban, Users, Briefcase, SlidersHorizontal, Check } from 'lucide-react';
+import { Download, Filter as FilterIcon, Activity as ActIcon, FolderKanban, Users, Briefcase, SlidersHorizontal, Check, ArrowUpNarrowWide, ArrowDownWideNarrow } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -59,11 +59,30 @@ export default function Reports() {
   );
   const [tasks, setTasks] = useState<DailyTask[]>([]);
   const [viewTask, setViewTask] = useState<DailyTask | null>(null);
+  // Chronological sort direction for the drilldown table + CSV. 'asc' = oldest
+  // first (1 → 30, and within a day 9am → 6pm); 'desc' = newest first.
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Break entries (imported "Lunch"/"Break" rows, is_break=true) are NOT listed
   // as individual task rows in the drilldown — their time is rolled up into a
   // single "Break" total instead. Everything else counts as work.
-  const workTasks = useMemo(() => tasks.filter((t) => !t.is_break), [tasks]);
+  // Sorted by date, then by start time within the day — so the order is truly
+  // chronological regardless of the order tasks were entered/created.
+  const workTasks = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return tasks
+      .filter((t) => !t.is_break)
+      .slice()
+      .sort((a, b) => {
+        const d = (a.task_date || '').localeCompare(b.task_date || '');
+        if (d !== 0) return d * dir;
+        const sa = toMinOfDay(a.start_time), sb = toMinOfDay(b.start_time);
+        if (sa == null && sb == null) return 0;
+        if (sa == null) return 1;   // untimed tasks sort last, both directions
+        if (sb == null) return -1;
+        return (sa - sb) * dir;
+      });
+  }, [tasks, sortDir]);
   const workHours = useMemo(() => workTasks.reduce((s, t) => s + Number(t.hours_spent || 0), 0), [workTasks]);
   // Includes idle gaps between tasks (same definition as the employee day view),
   // not just explicit "Lunch"/"Break" rows.
@@ -307,8 +326,17 @@ export default function Reports() {
 
           {/* Tasks table — columns driven by the chooser; scrolls horizontally */}
           <div className="card p-5">
-            {/* Table toolbar (upper right): column chooser + download */}
+            {/* Table toolbar (upper right): sort + column chooser + download */}
             <div className="flex items-center justify-end gap-3 mb-4">
+              <button
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                className="btn-ghost"
+                title="Toggle date/time order"
+              >
+                {sortDir === 'asc'
+                  ? <><ArrowUpNarrowWide size={14} /> Oldest first</>
+                  : <><ArrowDownWideNarrow size={14} /> Newest first</>}
+              </button>
               <div className="relative">
                 <button onClick={() => setColMenuOpen((o) => !o)} className="btn-ghost" title="Show / hide columns">
                   <SlidersHorizontal size={14} /> Columns
@@ -553,7 +581,10 @@ function groupHours(tasks: DailyTask[], field: keyof DailyTask) {
     m[label].hours += Number(t.hours_spent || 0);
     m[label].count += 1;
   }
-  return Object.values(m).sort((a, b) => b.hours - a.hours);
+  // Drop groups with no logged hours — they render as a label with no bar.
+  return Object.values(m)
+    .filter((g) => g.hours > 0)
+    .sort((a, b) => b.hours - a.hours);
 }
 
 function groupHoursByDate(tasks: DailyTask[]) {

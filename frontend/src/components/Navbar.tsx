@@ -11,6 +11,8 @@ import Notifications from './Notifications';
 const titles: Record<string, { title: string; sub: string }> = {
   '/':                 { title: 'Dashboard',     sub: "Welcome back — here's your work at a glance" },
   '/tasks':            { title: 'My Tasks',      sub: 'Log your day, build your streak' },
+  '/my-tasks':         { title: 'Assigned to Me', sub: 'Tasks assigned to you to action' },
+  '/assign-tasks':     { title: 'Assign Tasks',  sub: 'Assign work to your team and track it' },
   '/my-activity':      { title: 'My Activity',   sub: 'Your time tracked across projects' },
   '/notifications':    { title: 'Notifications', sub: 'Reminders and summaries sent to you' },
   '/reports':          { title: 'Reports',       sub: 'Daily, weekly, and monthly insights' },

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, LogIn, LogOut } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  CalendarDays, ChevronLeft, ChevronRight, Clock, LogIn, LogOut,
+  AlertTriangle, CalendarClock, ClipboardCheck, Flag, BellRing,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import { APP_CONFIG } from '../config/app-config';
 import Modal from './Modal';
-import type { DailyTask } from '../types';
+import { priorityColor } from './TaskDetailModal';
+import { isOverdue } from '../lib/dueFilter';
+import type { AssignedTask, DailyTask } from '../types';
 
 type View = 'day' | 'week' | 'month';
 
@@ -100,9 +105,13 @@ function weekRange(d: Date) {
 
 export default function EmployeeActivityCharts() {
   const navigate = useNavigate();
-  const [view, setView] = useState<View>('month');
+  // Opens on today's Day view — the day you're actually logging against. Week
+  // and month are a click away for looking back.
+  const [view, setView] = useState<View>('day');
   const [anchor, setAnchor] = useState(() => new Date());
   const [tasks, setTasks] = useState<DailyTask[]>([]);
+  // Tasks assigned to this employee — shown beside the Day card, not below it.
+  const [assigned, setAssigned] = useState<AssignedTask[]>([]);
   // Per-day Login/Logout audit times, keyed by YYYY-MM-DD. Drives the in/out
   // stamps shown inside calendar cells across all three views.
   const [bounds, setBounds] = useState<Record<string, DayBounds>>({});
@@ -129,6 +138,13 @@ export default function EmployeeActivityCharts() {
       .then((r) => setBounds(r.data || {}))
       .catch(() => setBounds({}));
   }, [range.from, range.to]);
+
+  // Assigned tasks don't depend on the calendar range — fetch once.
+  useEffect(() => {
+    api.get('/assigned-tasks/mine')
+      .then((r) => setAssigned(r.data || []))
+      .catch(() => setAssigned([]));
+  }, []);
 
   // Date → hours (excludes break entries)
   const hoursByDate = useMemo(() => {
@@ -265,8 +281,13 @@ export default function EmployeeActivityCharts() {
       {view === 'week' && (
         <WeekRow anchor={anchor} hoursByDate={hoursByDate} tasksByDate={tasksByDate} boundsByDate={bounds} projectColors={projectColors} today={today} onCellClick={onCellClick} />
       )}
+      {/* Day view splits the width: the day's own numbers on the left, the
+          tasks assigned to this employee on the right. Stacks on mobile. */}
       {view === 'day' && (
-        <DayCard date={anchor} hours={hoursByDate[ymd(anchor)] || 0} tasks={tasksByDate[ymd(anchor)] || []} bounds={bounds[ymd(anchor)]} projectColors={projectColors} onOpen={() => navigate(`/my-activity?date=${ymd(anchor)}`)} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+          <DayCard date={anchor} hours={hoursByDate[ymd(anchor)] || 0} tasks={tasksByDate[ymd(anchor)] || []} bounds={bounds[ymd(anchor)]} projectColors={projectColors} onOpen={() => navigate(`/my-activity?date=${ymd(anchor)}`)} />
+          <AssignedPanel tasks={assigned} date={ymd(anchor)} />
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
@@ -570,6 +591,127 @@ function WeekRow({ anchor, hoursByDate, tasksByDate, boundsByDate, projectColors
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// The Day view's right half: what's on this employee's plate, assigned by an
+// admin or manager. Read-only — clicking through to My Tasks is where you act
+// on them. The /assigned-tasks/mine endpoint already sorts Open → In Progress →
+// Completed, then by nearest due date, so the top rows are the urgent ones.
+function AssignedPanel({ tasks: allTasks, date }: { tasks: AssignedTask[]; date: string }) {
+  const isOverdue = (t: AssignedTask) => !!t.due_date && t.due_date < todayStr() && t.status !== 'Completed';
+  // The panel sits next to the selected day, so it shows what's actually due
+  // that day. Never-opened tasks stay regardless of due date — the whole point
+  // of the New flag is that you can't miss a fresh assignment.
+  const tasks = allTasks.filter((t) => t.due_date === date || !t.seen_at);
+  const open = tasks.filter((t) => t.status !== 'Completed');
+  // Overdue is counted across every task, not just the day in view — being late
+  // on something isn't a fact about the day you happen to be looking at.
+  const pendingCount = allTasks.filter(isOverdue).length;
+  // "New" = assigned to me and never opened. seen_at is set server-side the
+  // first time the detail modal loads the task, so the flag stays cleared
+  // across logins rather than resetting every session.
+  const isNew = (t: AssignedTask) => !t.seen_at;
+  const newCount = tasks.filter(isNew).length;
+  // Unopened tasks float to the top — that's where the eye should land.
+  const ordered = [...tasks].sort((a, b) => Number(isNew(b)) - Number(isNew(a)));
+
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-white/10 p-5 md:p-6">
+      <div className="flex items-center gap-2 mb-5">
+        <div className="relative h-9 w-9 rounded-xl bg-brand-500/15 text-brand-500 flex items-center justify-center shrink-0">
+          <ClipboardCheck size={18} />
+          {newCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
+              {newCount}
+            </span>
+          )}
+        </div>
+        <div className="min-w-0">
+          <h3 className="font-semibold leading-tight">Assigned to me</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {open.length} open · {tasks.length} total
+          </p>
+        </div>
+        <Link to="/my-tasks" className="ml-auto shrink-0 text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline">
+          View all →
+        </Link>
+      </div>
+
+      {/* Everything I'm late on, across all days — not just the selected one.
+          Clicking through opens My Assignments already filtered to overdue. */}
+      {pendingCount > 0 && (
+        <Link
+          to="/my-tasks?due=overdue"
+          className="mb-3 flex items-center gap-2 rounded-xl bg-rose-500/10 ring-1 ring-rose-500/30 px-3 py-2.5 hover:bg-rose-500/[0.15] transition-colors"
+        >
+          <AlertTriangle size={15} className="shrink-0 text-rose-600 dark:text-rose-400" />
+          <p className="text-xs font-semibold text-rose-700 dark:text-rose-300">
+            {pendingCount} pending task{pendingCount === 1 ? '' : 's'}
+          </p>
+          <span className="ml-auto text-xs font-medium text-rose-600 dark:text-rose-400">View →</span>
+        </Link>
+      )}
+
+      {newCount > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-brand-500/10 ring-1 ring-brand-500/30 px-3 py-2.5">
+          <BellRing size={15} className="shrink-0 text-brand-600 dark:text-brand-400" />
+          <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">
+            {newCount} new task{newCount === 1 ? '' : 's'} assigned to you — open {newCount === 1 ? 'it' : 'them'} to clear this.
+          </p>
+        </div>
+      )}
+
+      {tasks.length === 0 ? (
+        <div className="text-center text-sm opacity-60 py-10">
+          {allTasks.length === 0 ? 'No tasks assigned to you. 🌤️' : 'Nothing due on this day. 🌤️'}
+        </div>
+      ) : (
+        // Fixed height with its own scrollbar: 3 tasks or 50, the panel stays
+        // the same size and never drags the day card beside it out of shape.
+        <ul className="space-y-2.5 max-h-[11.25rem] overflow-y-auto thin-scrollbar pr-1.5 -mr-1.5">
+          {ordered.map((t) => (
+            <li key={t.id}>
+              <Link
+                to={`/my-tasks?task=${t.id}`}
+                className={`block rounded-xl p-3 transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.03] ${
+                  isNew(t)
+                    ? 'bg-brand-500/[0.06] ring-1 ring-brand-500/40'
+                    : 'ring-1 ring-slate-200/70 dark:ring-white/10'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      {isNew(t) && (
+                        <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-brand-600 text-white">NEW</span>
+                      )}
+                      <div className={`truncate text-sm text-slate-900 dark:text-white ${isNew(t) ? 'font-bold' : 'font-medium'}`} title={t.title}>
+                        {t.title}
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      {t.project_name || t.client_name || '—'} · by {t.assigned_by_name}
+                    </div>
+                  </div>
+                  <span className={`shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg ${priorityColor[t.priority]}`}>
+                    <Flag size={9} className="inline -mt-0.5 mr-1" />{t.priority}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-xs">
+                  <span className="text-slate-500 dark:text-slate-400">{t.status}</span>
+                  <span className={`ml-auto inline-flex items-center gap-1 ${isOverdue(t) ? 'text-rose-500 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {t.due_date
+                      ? (<>{isOverdue(t) ? <AlertTriangle size={11} /> : <CalendarClock size={11} />}{t.due_date}</>)
+                      : 'No due date'}
+                  </span>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -63,26 +63,22 @@ export default function Tasks() {
   // build-time const is just the initial fallback.
   const [maxTaskHours, setMaxTaskHours] = useState(APP_CONFIG.maxTaskHours);
 
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const [form, setForm] = useState({
-    client_id: '', project_id: '', activity_id: '',
+    client_id: params.get('client') || '', project_id: params.get('project') || '', activity_id: '',
     hours_spent: '', task_title: params.get('title') || '', description: params.get('desc') || '',
-    assigned_by: '', reference: '',
+    assigned_by: params.get('assignedby') || '', reference: '',
     // Auto start = now, end = +15 min (the user can still adjust). Progress
-    // defaults to Pending.
+    // defaults to Pending (or the value carried over from an assigned task).
     task_date: todayStr(), ...autoTimes(),
-    progress_status: 'Pending',
+    progress_status: params.get('progress') || 'Pending',
   });
 
-  // Pre-fill from the "Add to DWR" deep link (client inbox). Clear the params so
-  // a refresh doesn't re-apply them after the user edits the form.
-  useEffect(() => {
-    if (params.get('title') || params.get('desc')) {
-      params.delete('title'); params.delete('desc');
-      setParams(params, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Pre-fill from the "Add to DWR" deep link. The form's useState initializer
+  // reads these params (title/desc/client/project/assignedby/progress). We keep
+  // them in the URL rather than clearing on mount — clearing raced with React
+  // 18 StrictMode's double mount and wiped the values before the form captured
+  // them. They're harmless in the URL and get replaced on the next deep link.
   const [submitting, setSubmitting] = useState(false);
   // First Login of today (8 AM – 11:59 PM). Used as a floor for start/end
   // time pickers so users can't log work before they were actually at their

@@ -4,7 +4,8 @@ import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import { DailyTasksService } from '../daily-tasks/daily-tasks.service';
 import { EmailService } from '../email/email.service';
-import { adminDailyDigestEmail, employeeDailyReportEmail, reminderEmail } from '../email/templates';
+import { NotificationsService } from '../notifications/notifications.module';
+import { adminDailyDigestEmail, employeeDailyReportEmail, reminderEmail, assignedTaskEmail, overdueTasksEmail } from '../email/templates';
 import { APP_CONFIG } from '../config/app-config';
 import { LOGGING_ROLE_NAMES } from '../common/constants';
 
@@ -16,7 +17,105 @@ export class SchedulerService {
     @Inject(KNEX_CONNECTION) private readonly db: Knex,
     private readonly tasks: DailyTasksService,
     private readonly mail: EmailService,
+    private readonly notify: NotificationsService,
   ) {}
+
+  // ===== 6:00 AM — one digest per employee listing every overdue task =====
+  // Distinct from the 9 AM reminder, which fires one mail per task (including
+  // tasks due *today*). This is the "here's everything you're late on" summary,
+  // so it's grouped per person and skips anyone with nothing overdue.
+  @Cron('0 0 6 * * *', { name: 'overdue-task-digest', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
+  async sendOverdueTaskDigest() {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await this.db('assigned_tasks as t')
+      .join('employees as e', 't.assignee_id', 'e.id')
+      .leftJoin('employees as ab', 't.assigned_by_id', 'ab.id')
+      .leftJoin('clients as c', 't.client_id', 'c.id')
+      .leftJoin('projects as p', 't.project_id', 'p.id')
+      .where('t.is_deleted', false)
+      .whereNot('t.status', 'Completed')
+      .whereNotNull('t.due_date')
+      .andWhere('t.due_date', '<', today) // strictly overdue — today's tasks aren't late yet
+      .andWhere({ 'e.is_active': true, 'e.is_deleted': false })
+      .orderBy('t.due_date', 'asc')
+      .select(
+        't.id', 't.title', 't.status', 't.priority', 't.due_date', 't.assignee_id',
+        'e.email', 'e.name as assignee_name', 'ab.name as assigned_by_name',
+        'c.client_name', 'p.project_name',
+      );
+
+    // Group by assignee — one email each, not one per task.
+    const byEmployee = new Map<number, typeof rows>();
+    for (const r of rows) {
+      if (!r.email) continue;
+      const list = byEmployee.get(r.assignee_id) || [];
+      list.push(r);
+      byEmployee.set(r.assignee_id, list);
+    }
+
+    for (const [assignee_id, tasks] of byEmployee) {
+      const first = tasks[0];
+      await this.mail.send({
+        to: first.email,
+        type: 'Task Reminder',
+        subject: `${tasks.length} pending task${tasks.length === 1 ? '' : 's'} — overdue`,
+        html: overdueTasksEmail({ name: first.assignee_name, tasks, today }),
+        // One digest per person per day, whichever trigger fires first.
+        dedupeKey: `overdue-digest:${assignee_id}:${today}`,
+      });
+      await this.notify.create({
+        recipient_id: assignee_id,
+        type: 'Reminder',
+        title: `${tasks.length} pending task${tasks.length === 1 ? '' : 's'} overdue`,
+        body: tasks.map((t) => t.title).slice(0, 3).join(', '),
+        link: '/my-tasks?due=overdue',
+      });
+    }
+    this.logger.log(`Sent overdue digests to ${byEmployee.size} employees (${rows.length} tasks) for ${today}`);
+  }
+
+  // ===== 9:00 AM — remind assignees of tasks due today or overdue =====
+  @Cron('0 0 9 * * *', { name: 'assigned-task-due-reminder', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
+  async sendAssignedTaskReminders() {
+    const today = new Date().toISOString().slice(0, 10);
+    const due = await this.db('assigned_tasks as t')
+      .join('employees as e', 't.assignee_id', 'e.id')
+      .leftJoin('employees as ab', 't.assigned_by_id', 'ab.id')
+      .leftJoin('clients as c', 't.client_id', 'c.id')
+      .leftJoin('projects as p', 't.project_id', 'p.id')
+      .where('t.is_deleted', false)
+      .whereNotIn('t.status', ['Completed'])
+      .whereNotNull('t.due_date')
+      .andWhere('t.due_date', '<=', today)
+      .andWhere({ 'e.is_active': true, 'e.is_deleted': false })
+      .select(
+        't.id', 't.title', 't.description', 't.status', 't.priority',
+        't.assigned_date', 't.due_date', 't.assignee_id',
+        'e.email', 'e.name as assignee_name', 'ab.name as assigned_by_name',
+        'c.client_name', 'p.project_name',
+      );
+    for (const task of due) {
+      const overdue = task.due_date < today;
+      await this.notify.create({
+        recipient_id: task.assignee_id,
+        type: 'Reminder',
+        title: `${overdue ? 'Overdue' : 'Due today'}: ${task.title}`,
+        body: `Due ${task.due_date}`,
+        link: '/my-tasks',
+        task_id: task.id,
+        email: {
+          type: 'Task Reminder',
+          subject: `${overdue ? 'Overdue task' : 'Task due today'}: ${task.title}`,
+          html: assignedTaskEmail({
+            headline: overdue ? 'A task is overdue' : 'A task is due today',
+            task,
+            note: { label: 'Reminder', body: `This task is ${overdue ? 'overdue' : 'due today'} (${task.due_date}).` },
+          }),
+        },
+      });
+    }
+    this.logger.log(`Sent ${due.length} assigned-task reminders for ${today}`);
+  }
 
   // ===== 11:00 PM — full-day report to every employee =====
   @Cron('0 0 23 * * *', { name: 'daily-employee-report', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
