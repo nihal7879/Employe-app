@@ -5,9 +5,11 @@ import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
   FolderKanban, ListChecks, Mail, ChevronLeft, ChevronDown, CalendarSearch,
   Timer, Bell, Database, ShieldCheck, Inbox, UsersRound, UserCog,
+  ClipboardCheck, CheckSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { api } from '../lib/api';
 
 type LeafItem = {
   to: string;
@@ -16,6 +18,7 @@ type LeafItem = {
   admin: boolean;
   hideForAdmin: boolean;
   manager?: boolean; // visible only to Managers
+  staff?: boolean;   // visible to Admins AND Managers
 };
 type GroupItem = {
   group: 'manage';
@@ -36,6 +39,8 @@ const items: Item[] = [
   { to: '/',                 icon: LayoutDashboard, label: 'Dashboard',     admin: false, hideForAdmin: false },
   { to: '/tasks',            icon: ClipboardList,   label: 'Tasks',         admin: false, hideForAdmin: true  },
   // { to: '/inbox',         icon: Inbox,           label: 'Inbox',         admin: false, hideForAdmin: true  }, // hidden for now
+  { to: '/my-tasks',         icon: CheckSquare,     label: 'My Assignments', admin: false, hideForAdmin: true  },
+  { to: '/assign-tasks',     icon: ClipboardCheck,  label: 'Assign Tasks',  admin: false, hideForAdmin: false, staff: true },
   { to: '/my-activity',      icon: Timer,           label: 'My Activity',   admin: false, hideForAdmin: true  },
   { to: '/manager/team',     icon: UsersRound,      label: 'My Team',       admin: false, hideForAdmin: false, manager: true },
   { to: '/manager/permissions', icon: ShieldCheck,  label: 'Permissions',   admin: false, hideForAdmin: false, manager: true },
@@ -65,9 +70,11 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const isAdmin = user?.role === 'Admin';
   const isManager = user?.role === 'Manager';
-  const visible = items.filter(
-    (i) => (!i.admin || isAdmin) && (!i.manager || isManager) && !(isAdmin && i.hideForAdmin),
-  );
+  const visible = items.filter((i) => {
+    // staff items show for Admins and Managers (but not plain employees).
+    if (!isGroup(i) && i.staff) return isAdmin || isManager;
+    return (!i.admin || isAdmin) && (!i.manager || isManager) && !(isAdmin && i.hideForAdmin);
+  });
 
   // Per-group expanded state. Auto-opens when any of its children is the
   // current route so the active item is always visible without a manual click.
@@ -83,6 +90,21 @@ export default function Sidebar() {
       return next;
     });
   }, [loc.pathname]);
+  // Count of tasks assigned to me that I've never opened. Refetched on every
+  // route change (so it drops the moment the detail modal marks one seen) and
+  // polled so a task assigned while the tab is open still surfaces.
+  const [unseen, setUnseen] = useState(0);
+  useEffect(() => {
+    if (isAdmin) return;
+    const load = () => api.get('/assigned-tasks/mine/unseen-count')
+      .then((r) => setUnseen(Number(r.data?.count || 0)))
+      .catch(() => undefined);
+    void load();
+    const t = setInterval(load, 60_000);
+    window.addEventListener('assigned-tasks:seen', load);
+    return () => { clearInterval(t); window.removeEventListener('assigned-tasks:seen', load); };
+  }, [isAdmin, loc.pathname]);
+
   const toggleGroup = (key: string) => {
     if (collapsed) { setCollapsed(false); setOpenGroups((p) => ({ ...p, [key]: true })); return; }
     setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
@@ -223,7 +245,13 @@ export default function Sidebar() {
                       transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                     />
                   )}
-                  <item.icon size={18} className="shrink-0" />
+                  <span className="relative shrink-0">
+                    <item.icon size={18} />
+                    {/* Collapsed rail has no room for the count — a dot still says "look here". */}
+                    {item.to === '/my-tasks' && unseen > 0 && collapsed && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
+                    )}
+                  </span>
                   <AnimatePresence>
                     {!collapsed && (
                       <motion.span initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }} className="truncate">
@@ -231,6 +259,11 @@ export default function Sidebar() {
                       </motion.span>
                     )}
                   </AnimatePresence>
+                  {item.to === '/my-tasks' && unseen > 0 && !collapsed && (
+                    <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {unseen}
+                    </span>
+                  )}
                 </>
               )}
             </NavLink>

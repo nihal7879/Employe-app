@@ -4,6 +4,9 @@ import { Check, ChevronDown, Search, X } from 'lucide-react';
 
 export interface MultiOption { label: string; value: string; }
 
+// Worst-case panel height: the search row (~41px) plus the max-h-64 option list.
+const PANEL_MAX_H = 297;
+
 export default function MultiSelect({
   value, options, onChange, placeholder = 'Select…', searchable = true, className = '',
 }: {
@@ -16,6 +19,7 @@ export default function MultiSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [dropUp, setDropUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,6 +29,24 @@ export default function MultiSelect({
     window.addEventListener('mousedown', onClick);
     return () => window.removeEventListener('mousedown', onClick);
   }, []);
+
+  // Open upward when the panel wouldn't fit below the trigger, so it never
+  // extends past the viewport and forces the page to scroll.
+  useEffect(() => {
+    if (!open || !ref.current) return;
+    const place = () => {
+      const r = ref.current!.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom;
+      setDropUp(below < PANEL_MAX_H + 16 && r.top > below);
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
 
   const selectedSet = useMemo(() => new Set(value), [value]);
   const filtered = useMemo(
@@ -63,9 +85,10 @@ export default function MultiSelect({
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            initial={{ opacity: 0, y: dropUp ? 6 : -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: dropUp ? 6 : -6, scale: 0.98 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-0 right-0 mt-2 z-50 rounded-xl bg-white border border-slate-200 shadow-xl overflow-hidden"
+            className={`absolute left-0 right-0 z-50 rounded-xl bg-white border border-slate-200 shadow-xl overflow-hidden
+              ${dropUp ? 'bottom-full mb-2' : 'top-full mt-2'}`}
           >
             {searchable && (
               <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
@@ -73,7 +96,9 @@ export default function MultiSelect({
                 <input
                   autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search…"
-                  className="flex-1 text-sm text-slate-900 outline-none bg-transparent"
+                  // The global `input` rule in index.css wins on specificity, so the
+                  // chrome it adds (border, padding, focus ring) is stripped explicitly.
+                  className="flex-1 text-sm text-slate-900 bg-transparent !border-0 !p-0 !rounded-none !ring-0 !shadow-none outline-none"
                 />
               </div>
             )}

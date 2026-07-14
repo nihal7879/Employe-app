@@ -5,6 +5,9 @@ import ProtectedRoute from './auth/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Tasks from './pages/Tasks';
+import MyTasks from './pages/MyTasks';
+import AssignTasks from './pages/AssignTasks';
+import AssignTaskNew from './pages/AssignTaskNew';
 import MyActivity from './pages/MyActivity';
 import MyNotifications from './pages/MyNotifications';
 import Inbox from './pages/Inbox';
@@ -44,9 +47,14 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route element={<ProtectedRoute employeeOnly />}>
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/my-tasks" element={<MyTasks />} />
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/my-activity" element={<MyActivity />} />
             <Route path="/notifications" element={<MyNotifications />} />
+          </Route>
+          <Route element={<ProtectedRoute staffOnly />}>
+            <Route path="/assign-tasks" element={<AssignTasks />} />
+            <Route path="/assign-tasks/new" element={<AssignTaskNew />} />
           </Route>
           <Route element={<ProtectedRoute managerOnly />}>
             <Route path="/manager/team" element={<ManagerDashboard />} />

@@ -9,7 +9,11 @@ export type EmailType =
   | 'Daily Summary'
   | 'Weekly Summary'
   | 'Monthly Summary'
-  | 'Client Summary';
+  | 'Client Summary'
+  | 'Task Assignment'
+  | 'Task Comment'
+  | 'Task Status'
+  | 'Task Reminder';
 
 @Injectable()
 export class EmailService {

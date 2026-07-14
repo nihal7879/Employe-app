@@ -18,6 +18,7 @@ import EmployeeActivityCharts from '../components/EmployeeActivityCharts';
 import { Skeleton } from '../components/Skeleton';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
+import { isOverdue } from '../lib/dueFilter';
 import type { DailyTask } from '../types';
 
 // Module-level cache keyed by period so navigating away and back to the
@@ -186,6 +187,8 @@ export default function Dashboard() {
   const [yDate, setYDate] = useState('');
   // Yesterday's count of employees who logged tasks before their login (override).
   const [yOverrides, setYOverrides] = useState(0);
+  // Assigned tasks past their due date and still unfinished.
+  const [overdueAssigned, setOverdueAssigned] = useState(0);
 
   useEffect(() => {
     if (isAdmin) {
@@ -223,6 +226,15 @@ export default function Dashboard() {
           setYSubmitted(submittedCount);
           setYOverrides(overrideCount);
           dashCache[period] = { admin: dash.data, ySubmitted: submittedCount, yPendingList: pendingList, yDate: y, yOverrides: overrideCount };
+        })
+        .catch(() => {});
+
+      // Overdue assigned tasks — independent of the period filter and of the
+      // dashboard cache, so it's fetched on its own.
+      api.get('/assigned-tasks')
+        .then((r) => {
+          const list = Array.isArray(r.data) ? r.data : [];
+          setOverdueAssigned(list.filter((t: any) => t.status !== 'Completed' && isOverdue(t)).length);
         })
         .catch(() => {});
     } else {
@@ -358,7 +370,9 @@ export default function Dashboard() {
           <StatCard to="/admin/today-clients"     icon={<Briefcase size={20} />}     label="Clients Active"    value={(admin.today_clients || []).length}          accent="pink"  />
           <StatCard to="/admin/today-projects"    icon={<FolderKanban size={20} />}  label="Projects Active"   value={(admin.today_projects || []).length}         accent="ok"    />
           <StatCard to="/reports"                 icon={<Clock size={20} />}         label="Hours Till Now"    value={Number(admin.today?.hours || 0)}             accent="cyan"  format={(n) => { const t = Math.round(n * 60), h = Math.floor(t / 60), m = t % 60; return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`; }} />
-          <StatCard to="/admin/yesterday-pending" icon={<AlertTriangle size={20} />} label="Yesterday Pending" value={yPendingList.length}                         accent="bad"   />
+          {/* Overdue assigned tasks — lands on the Assign Tasks board already
+              filtered to Overdue. */}
+          <StatCard to="/assign-tasks?due=overdue" icon={<AlertTriangle size={20} />} label="Pending Tasks" value={overdueAssigned} accent="bad" />
         </div>
       )}
 

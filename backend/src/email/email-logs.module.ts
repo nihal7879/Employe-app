@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Injectable, Module, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Injectable, Module, Patch, Query, UseGuards } from '@nestjs/common';
 import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -21,6 +21,24 @@ class EmailLogsService {
   listForEmail(email: string, limit = 30) {
     return this.db('email_logs').where('email_to', email).orderBy('created_at', 'desc').limit(limit);
   }
+
+  // Email logs carry no per-recipient read flag, so "unread" is everything that
+  // landed after the user last opened the Emails tab. An admin's feed is every
+  // log; everyone else only sees mail addressed to them.
+  async unreadCount(user: AuthUser) {
+    const emp = await this.db('employees').where({ id: user.id }).first('email_notifs_seen_at');
+    const seenAt = emp?.email_notifs_seen_at;
+    let q = this.db('email_logs');
+    if (user.role !== 'Admin') q = q.where('email_to', user.email);
+    if (seenAt) q = q.where('created_at', '>', seenAt);
+    const row = await q.count({ c: 'id' }).first();
+    return { count: Number(row?.c || 0) };
+  }
+
+  async markSeen(user: AuthUser) {
+    await this.db('employees').where({ id: user.id }).update({ email_notifs_seen_at: this.db.fn.now() });
+    return { ok: true };
+  }
 }
 
 @Controller('email-logs')
@@ -31,9 +49,23 @@ class EmailLogsController {
 
   // Current user's own notifications (any authenticated role).
   @Get('mine')
-  @Roles('Admin', 'Employee')
+  @Roles('Admin', 'Manager', 'Employee')
   mine(@CurrentUser() user: AuthUser) {
     return this.s.listForEmail(user.email);
+  }
+
+  // Badge count for the bell's Emails tab, and the acknowledgement that clears
+  // it. Stored per user so it survives a logout, a new browser, or a new device.
+  @Get('mine/unread-count')
+  @Roles('Admin', 'Manager', 'Employee')
+  unread(@CurrentUser() user: AuthUser) {
+    return this.s.unreadCount(user);
+  }
+
+  @Patch('mine/seen')
+  @Roles('Admin', 'Manager', 'Employee')
+  seen(@CurrentUser() user: AuthUser) {
+    return this.s.markSeen(user);
   }
 
   @Get()
