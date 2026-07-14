@@ -12,7 +12,7 @@ import MultiSelect from '../components/ui/MultiSelect';
 import TaskDetailModal, { STATUSES, priorityColor } from '../components/TaskDetailModal';
 import StatusSelect from '../components/StatusSelect';
 import Select from '../components/Select';
-import { TableSkeleton } from '../components/Skeleton';
+import { Skeleton, TableSkeleton } from '../components/Skeleton';
 import { DUE_OPTIONS, matchesDue, isOverdue, type DueFilter } from '../lib/dueFilter';
 
 // Local calendar date — toISOString() is UTC and reads as yesterday before
@@ -324,9 +324,30 @@ export default function AssignTasks() {
       {/* Board */}
       {view === 'board' && (
         loading ? (
+          // Mirrors the real board: the lane headers are already known (the
+          // statuses are fixed), so only the cards are shimmered.
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {STATUSES.map((s) => (
-              <div key={s} className="card p-3 h-64 animate-pulse bg-slate-50 dark:bg-white/[0.02]" />
+            {STATUSES.map((s, i) => (
+              <section key={s} className="card p-3 flex flex-col">
+                <header className="flex items-center gap-2 px-1 pb-3">
+                  <span className={`h-2 w-2 rounded-full ${COLUMN_STYLE[s].dot}`} />
+                  <h3 className={`text-sm font-semibold ${COLUMN_STYLE[s].head}`}>{s}</h3>
+                  <Skeleton className="ml-auto h-5 w-6 rounded-md" />
+                </header>
+                <div className="space-y-2.5 flex-1">
+                  {Array.from({ length: [3, 2, 2][i] }).map((_, c) => (
+                    <div key={c} className="rounded-xl p-3 ring-1 ring-slate-200 dark:ring-white/10 space-y-2.5">
+                      <Skeleton className="h-4 w-4/5" />
+                      <Skeleton className="h-3 w-3/5" />
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <Skeleton className="h-5 w-20 rounded-md" />
+                        <Skeleton className="h-5 w-14 rounded-md" />
+                        <Skeleton className="h-4 w-16 rounded-md" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         ) : visibleTasks.length === 0 ? (
