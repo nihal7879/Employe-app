@@ -5,6 +5,8 @@
   "loginGraceMinutes": 120,
   "backdateMaxDays": 7,
   "maxTaskHours": 1.5,
+  "taskEntryWindowMinutes": 60,
+  "dashboardNotice": "Please log each task within 60 minutes of finishing it. Entries made more than 1 hour after a task ends will be blocked.",
   "gpsBackfillWindowMinutes": 10,
   "jwtExpiresIn": "7d",
   "sharedLogins": {

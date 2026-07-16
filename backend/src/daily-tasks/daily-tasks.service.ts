@@ -172,6 +172,32 @@ export class DailyTasksService {
     }
   }
 
+  // Enforce the "every 2 hours" entry window: a task may only be logged while
+  // the current time is within (end_time + taskEntryWindowMinutes). This stops
+  // employees from backfilling the whole day at 6 PM — each ~2-hour slot must be
+  // logged close to when it happened, and once its window passes it locks.
+  // Only meaningful for TODAY's tasks; callers skip it for backdated dates and
+  // for the Admin / allow_log_anytime overrides. Times may be "HH:MM" or
+  // "HH:MM:SS"; compared at minute granularity against server-local time.
+  private assertWithinEntryWindow(endTime: string): void {
+    const toMins = (t: string) => {
+      const m = t.match(/^(\d{1,2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+    };
+    const end = toMins(endTime);
+    if (end < 0) return;
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const windowMins = Math.round(APP_CONFIG.taskEntryWindowMinutes);
+    if (nowMins - end > windowMins) {
+      const closedAtMins = end + windowMins;
+      const closedAt = `${String(Math.floor((closedAtMins % 1440) / 60)).padStart(2, '0')}:${String(closedAtMins % 60).padStart(2, '0')}`;
+      throw new ConflictException(
+        `The window to log this time slot has closed (it ended at ${this.fmt12(endTime)}; entries were allowed until ${this.fmt12(closedAt)}). You can only log a task within ${windowMins} minutes of when it ended.`,
+      );
+    }
+  }
+
   async create(employee_id: number, ctx: RequestContext, dto: CreateDailyTaskDto) {
     const perms = await this.employeePerms(employee_id);
     const taskDate = String(dto.task_date).slice(0, 10);
@@ -189,6 +215,14 @@ export class DailyTasksService {
     // entries so the timeline stays granular.
     if (dto.start_time && dto.end_time) {
       this.assertWithinMaxDuration(dto.start_time, dto.end_time);
+    }
+
+    // Enforce the "every 2 hours" entry window for TODAY's tasks: each slot must
+    // be logged within taskEntryWindowMinutes of its end_time. Bypassed for the
+    // allow_log_anytime permission (they may catch up any time).
+    const today = new Date().toISOString().slice(0, 10);
+    if (!perms.allow_log_anytime && dto.end_time && taskDate === today) {
+      this.assertWithinEntryWindow(dto.end_time);
     }
 
     // Reject if another non-deleted task for this employee on the same date
@@ -269,6 +303,17 @@ export class DailyTasksService {
     // Same max-duration cap as create(), using the effective (post-edit) times.
     if (effStart && effEnd) {
       this.assertWithinMaxDuration(String(effStart), String(effEnd));
+    }
+
+    // Same "every 2 hours" entry-window guard as create(), for TODAY's tasks.
+    // Admin edits override (corrections), as does the allow_log_anytime perm.
+    if (user.role !== 'Admin' && effEnd) {
+      const effDate = (dto.task_date || String(existing.task_date)).slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      if (effDate === today) {
+        const perms = await this.employeePerms(existing.employee_id);
+        if (!perms.allow_log_anytime) this.assertWithinEntryWindow(String(effEnd));
+      }
     }
 
     // Prevent the edited window from overlapping another of the employee's tasks

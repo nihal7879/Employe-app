@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, ShieldCheck, CalendarClock, Clock } from 'lucide-react';
+import { Search, ShieldCheck, CalendarClock, Clock, Megaphone } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { Employee } from '../../types';
 import { TableSkeleton } from '../../components/Skeleton';
@@ -20,6 +20,11 @@ export default function Permissions() {
   const [savedDays, setSavedDays] = useState(String(APP_CONFIG.backdateMaxDays));
   const [savingDays, setSavingDays] = useState(false);
 
+  // Scrolling dashboard notice (admin-editable, live via runtime-config).
+  const [notice, setNotice] = useState('');
+  const [savedNotice, setSavedNotice] = useState('');
+  const [savingNotice, setSavingNotice] = useState(false);
+
   useEffect(() => {
     api.get('/config')
       .then((r) => {
@@ -27,9 +32,27 @@ export default function Permissions() {
           setBackdateDays(String(r.data.backdateMaxDays));
           setSavedDays(String(r.data.backdateMaxDays));
         }
+        if (r.data?.dashboardNotice != null) {
+          setNotice(String(r.data.dashboardNotice));
+          setSavedNotice(String(r.data.dashboardNotice));
+        }
       })
       .catch(() => {});
   }, []);
+
+  const saveNotice = async () => {
+    setSavingNotice(true);
+    try {
+      const { data } = await api.patch('/config', { dashboardNotice: notice });
+      const next = String(data?.dashboardNotice ?? notice);
+      setNotice(next); setSavedNotice(next);
+      toast.success('Dashboard notice updated');
+    } catch {
+      toast.error('Could not update notice');
+    } finally {
+      setSavingNotice(false);
+    }
+  };
 
   const saveBackdateDays = async () => {
     const n = Number(backdateDays);
@@ -124,6 +147,35 @@ export default function Permissions() {
           <div>
             <div className="font-semibold text-sm">Log anytime</div>
             <div className="text-xs text-ink-mute">Log work before the morning login (for a forgotten login).</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Dashboard notice editor */}
+      <div className="card p-4">
+        <div className="flex items-start gap-3">
+          <Megaphone size={18} className="text-amber-500 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <div className="font-semibold text-sm">Dashboard notice</div>
+            <div className="text-xs text-ink-mute">Scrolling message shown to all employees on their dashboard. Leave empty to hide it.</div>
+            <textarea
+              className="mt-2 w-full text-sm !py-2"
+              rows={2}
+              maxLength={500}
+              placeholder="e.g. Please log each task within 60 minutes of finishing it."
+              value={notice}
+              onChange={(e) => setNotice(e.target.value)}
+            />
+            {notice !== savedNotice && (
+              <div className="mt-2 flex items-center gap-2">
+                <button type="button" className="btn-primary !py-1.5 !px-3 text-xs" disabled={savingNotice} onClick={saveNotice}>
+                  {savingNotice ? 'Saving…' : 'Save notice'}
+                </button>
+                <button type="button" className="text-xs text-ink-mute underline" onClick={() => setNotice(savedNotice)}>
+                  Reset
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
