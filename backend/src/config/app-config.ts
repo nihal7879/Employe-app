@@ -156,6 +156,15 @@ export const APP_CONFIG = {
     return runtimeStr('dashboardNotice', 'DASHBOARD_NOTICE', 'Please log each task within 60 minutes of finishing it. Entries made more than 1 hour after a task ends will be blocked.');
   },
 
+  // Colour theme for the notice ticker. One of a fixed preset list the frontend
+  // knows how to render (red/amber/blue/green/slate). LIVE-EDITABLE via
+  // dashboardNoticeColor in runtime-config.json.
+  get dashboardNoticeColor(): string {
+    const allowed = ['red', 'amber', 'blue', 'green', 'slate'];
+    const v = runtimeStr('dashboardNoticeColor', 'DASHBOARD_NOTICE_COLOR', 'red');
+    return allowed.includes(v) ? v : 'red';
+  },
+
   // -----------------------------------------------------------------------
   // GPS audit
   // -----------------------------------------------------------------------

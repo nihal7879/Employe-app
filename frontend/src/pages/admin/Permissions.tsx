@@ -8,6 +8,16 @@ import { APP_CONFIG } from '../../config/app-config';
 
 type PermKey = 'allow_backdated_tasks' | 'allow_log_anytime';
 
+// Notice text-colour presets (must match the keys the backend accepts and the
+// NoticeTicker renders). `swatch` is the button preview colour.
+const NOTICE_COLORS = [
+  { key: 'red', label: 'Red', swatch: 'bg-red-600' },
+  { key: 'amber', label: 'Amber', swatch: 'bg-amber-500' },
+  { key: 'blue', label: 'Blue', swatch: 'bg-blue-600' },
+  { key: 'green', label: 'Green', swatch: 'bg-emerald-600' },
+  { key: 'slate', label: 'Grey', swatch: 'bg-slate-500' },
+];
+
 export default function Permissions() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState('');
@@ -23,6 +33,8 @@ export default function Permissions() {
   // Scrolling dashboard notice (admin-editable, live via runtime-config).
   const [notice, setNotice] = useState('');
   const [savedNotice, setSavedNotice] = useState('');
+  const [noticeColor, setNoticeColor] = useState('red');
+  const [savedNoticeColor, setSavedNoticeColor] = useState('red');
   const [savingNotice, setSavingNotice] = useState(false);
 
   useEffect(() => {
@@ -36,6 +48,10 @@ export default function Permissions() {
           setNotice(String(r.data.dashboardNotice));
           setSavedNotice(String(r.data.dashboardNotice));
         }
+        if (r.data?.dashboardNoticeColor != null) {
+          setNoticeColor(String(r.data.dashboardNoticeColor));
+          setSavedNoticeColor(String(r.data.dashboardNoticeColor));
+        }
       })
       .catch(() => {});
   }, []);
@@ -43,9 +59,11 @@ export default function Permissions() {
   const saveNotice = async () => {
     setSavingNotice(true);
     try {
-      const { data } = await api.patch('/config', { dashboardNotice: notice });
+      const { data } = await api.patch('/config', { dashboardNotice: notice, dashboardNoticeColor: noticeColor });
       const next = String(data?.dashboardNotice ?? notice);
+      const nextColor = String(data?.dashboardNoticeColor ?? noticeColor);
       setNotice(next); setSavedNotice(next);
+      setNoticeColor(nextColor); setSavedNoticeColor(nextColor);
       toast.success('Dashboard notice updated');
     } catch {
       toast.error('Could not update notice');
@@ -166,12 +184,27 @@ export default function Permissions() {
               value={notice}
               onChange={(e) => setNotice(e.target.value)}
             />
-            {notice !== savedNotice && (
-              <div className="mt-2 flex items-center gap-2">
+            {/* Text colour presets — only the scrolling message text is coloured. */}
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs text-ink-mute mr-1">Text colour:</span>
+              {NOTICE_COLORS.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  title={c.label}
+                  aria-label={c.label}
+                  onClick={() => setNoticeColor(c.key)}
+                  className={`h-6 w-6 rounded-full ${c.swatch} transition
+                    ${noticeColor === c.key ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-bg-deep' : 'ring-1 ring-black/10 dark:ring-white/20'}`}
+                />
+              ))}
+            </div>
+            {(notice !== savedNotice || noticeColor !== savedNoticeColor) && (
+              <div className="mt-3 flex items-center gap-2">
                 <button type="button" className="btn-primary !py-1.5 !px-3 text-xs" disabled={savingNotice} onClick={saveNotice}>
                   {savingNotice ? 'Saving…' : 'Save notice'}
                 </button>
-                <button type="button" className="text-xs text-ink-mute underline" onClick={() => setNotice(savedNotice)}>
+                <button type="button" className="text-xs text-ink-mute underline" onClick={() => { setNotice(savedNotice); setNoticeColor(savedNoticeColor); }}>
                   Reset
                 </button>
               </div>
