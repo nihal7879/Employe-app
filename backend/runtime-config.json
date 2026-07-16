@@ -11,6 +11,9 @@
   "gpsBackfillWindowMinutes": 10,
   "jwtExpiresIn": "7d",
   "sharedLogins": {
-    "frontend.developer@millicent.in": [9, 10]
+    "frontend.developer@millicent.in": [
+      9,
+      10
+    ]
   }
 }

@@ -24,6 +24,8 @@ import { ReportsModule } from './reports/reports.module';
 import { RolesModule } from './roles/roles.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { InboxModule } from './inbox/inbox.module';
+import { HolidaysModule } from './holidays/holidays.module';
+import { NoticesModule } from './notices/notices.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { InboxModule } from './inbox/inbox.module';
     AuditModule,
     SchedulerModule,
     InboxModule,
+    HolidaysModule,
+    NoticesModule,
     AppSettingsModule,
   ],
   controllers: [HealthController],

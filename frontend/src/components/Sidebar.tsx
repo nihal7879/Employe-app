@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
   FolderKanban, ListChecks, ChevronLeft, ChevronDown, CalendarSearch,
   Timer, Bell, Database, ShieldCheck, Inbox, UsersRound, UserCog,
-  ClipboardCheck, CheckSquare,
+  ClipboardCheck, CheckSquare, Megaphone,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -58,6 +58,8 @@ const items: Item[] = [
       { to: '/admin/managers',   icon: UserCog,      label: 'Managers' },
       { to: '/admin/activities', icon: ListChecks,   label: 'Activities' },
       { to: '/admin/permissions', icon: ShieldCheck, label: 'Permissions' },
+      { to: '/admin/holidays',   icon: CalendarSearch, label: 'Holidays' },
+      { to: '/admin/notices',    icon: Megaphone,      label: 'Notices' },
     ],
   },
   { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: false },
