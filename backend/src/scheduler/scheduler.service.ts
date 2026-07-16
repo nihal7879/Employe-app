@@ -5,6 +5,7 @@ import { KNEX_CONNECTION } from '../database/knex.module';
 import { DailyTasksService } from '../daily-tasks/daily-tasks.service';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.module';
+import { HolidaysService } from '../holidays/holidays.module';
 import { adminDailyDigestEmail, employeeDailyReportEmail, reminderEmail, assignedTaskEmail, overdueTasksEmail } from '../email/templates';
 import { APP_CONFIG } from '../config/app-config';
 import { LOGGING_ROLE_NAMES } from '../common/constants';
@@ -18,6 +19,7 @@ export class SchedulerService {
     private readonly tasks: DailyTasksService,
     private readonly mail: EmailService,
     private readonly notify: NotificationsService,
+    private readonly holidays: HolidaysService,
   ) {}
 
   // ===== 6:00 AM — one digest per employee listing every overdue task =====
@@ -121,6 +123,10 @@ export class SchedulerService {
   @Cron('0 0 23 * * *', { name: 'daily-employee-report', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async sendDailyEmployeeReports() {
     const date = new Date().toISOString().slice(0, 10);
+    if (await this.holidays.isHoliday(date)) {
+      this.logger.log(`${date} is a holiday — skipping daily reports`);
+      return;
+    }
     this.logger.log(`Running 11 PM daily report for ${date}`);
     await this.dispatchEmployeeReports(date, `Your Daily Task Report — ${date}`);
     await this.sendAdminDailySummary(date);
@@ -247,6 +253,11 @@ export class SchedulerService {
   @Cron('0 45 18 * * *', { name: 'pending-submission-reminder', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async sendPendingReminders() {
     const date = new Date().toISOString().slice(0, 10);
+    // No "you didn't submit tasks" nag on a company holiday.
+    if (await this.holidays.isHoliday(date)) {
+      this.logger.log(`${date} is a holiday — skipping pending-submission reminders`);
+      return;
+    }
     const submittedIds = await this.db('daily_tasks')
       .where('task_date', date)
       .andWhere('is_deleted', false)

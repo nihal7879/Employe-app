@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Search, ShieldCheck, CalendarClock, Clock, Megaphone } from 'lucide-react';
+import { Search, ShieldCheck, CalendarClock, Clock } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { Employee } from '../../types';
 import { TableSkeleton } from '../../components/Skeleton';
@@ -33,16 +33,6 @@ function expiryLabel(iso?: string | null): { text: string; expired: boolean } | 
   return { text, expired };
 }
 
-// Notice text-colour presets (must match the keys the backend accepts and the
-// NoticeTicker renders). `swatch` is the button preview colour.
-const NOTICE_COLORS = [
-  { key: 'red', label: 'Red', swatch: 'bg-red-600' },
-  { key: 'amber', label: 'Amber', swatch: 'bg-amber-500' },
-  { key: 'blue', label: 'Blue', swatch: 'bg-blue-600' },
-  { key: 'green', label: 'Green', swatch: 'bg-emerald-600' },
-  { key: 'slate', label: 'Grey', swatch: 'bg-slate-500' },
-];
-
 export default function Permissions() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState('');
@@ -55,13 +45,6 @@ export default function Permissions() {
   const [savedDays, setSavedDays] = useState(String(APP_CONFIG.backdateMaxDays));
   const [savingDays, setSavingDays] = useState(false);
 
-  // Scrolling dashboard notice (admin-editable, live via runtime-config).
-  const [notice, setNotice] = useState('');
-  const [savedNotice, setSavedNotice] = useState('');
-  const [noticeColor, setNoticeColor] = useState('red');
-  const [savedNoticeColor, setSavedNoticeColor] = useState('red');
-  const [savingNotice, setSavingNotice] = useState(false);
-
   useEffect(() => {
     api.get('/config')
       .then((r) => {
@@ -69,33 +52,9 @@ export default function Permissions() {
           setBackdateDays(String(r.data.backdateMaxDays));
           setSavedDays(String(r.data.backdateMaxDays));
         }
-        if (r.data?.dashboardNotice != null) {
-          setNotice(String(r.data.dashboardNotice));
-          setSavedNotice(String(r.data.dashboardNotice));
-        }
-        if (r.data?.dashboardNoticeColor != null) {
-          setNoticeColor(String(r.data.dashboardNoticeColor));
-          setSavedNoticeColor(String(r.data.dashboardNoticeColor));
-        }
       })
       .catch(() => {});
   }, []);
-
-  const saveNotice = async () => {
-    setSavingNotice(true);
-    try {
-      const { data } = await api.patch('/config', { dashboardNotice: notice, dashboardNoticeColor: noticeColor });
-      const next = String(data?.dashboardNotice ?? notice);
-      const nextColor = String(data?.dashboardNoticeColor ?? noticeColor);
-      setNotice(next); setSavedNotice(next);
-      setNoticeColor(nextColor); setSavedNoticeColor(nextColor);
-      toast.success('Dashboard notice updated');
-    } catch {
-      toast.error('Could not update notice');
-    } finally {
-      setSavingNotice(false);
-    }
-  };
 
   const saveBackdateDays = async () => {
     const n = Number(backdateDays);
@@ -206,50 +165,6 @@ export default function Permissions() {
           <div>
             <div className="font-semibold text-sm">Log anytime</div>
             <div className="text-xs text-ink-mute">Log work before the morning login (for a forgotten login).</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Dashboard notice editor */}
-      <div className="card p-4">
-        <div className="flex items-start gap-3">
-          <Megaphone size={18} className="text-amber-500 mt-0.5 shrink-0" />
-          <div className="flex-1">
-            <div className="font-semibold text-sm">Dashboard notice</div>
-            <div className="text-xs text-ink-mute">Scrolling message shown to all employees on their dashboard. Leave empty to hide it.</div>
-            <textarea
-              className="mt-2 w-full text-sm !py-2"
-              rows={2}
-              maxLength={500}
-              placeholder="e.g. Please log each task within 60 minutes of finishing it."
-              value={notice}
-              onChange={(e) => setNotice(e.target.value)}
-            />
-            {/* Text colour presets — only the scrolling message text is coloured. */}
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-ink-mute mr-1">Text colour:</span>
-              {NOTICE_COLORS.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  title={c.label}
-                  aria-label={c.label}
-                  onClick={() => setNoticeColor(c.key)}
-                  className={`h-6 w-6 rounded-full ${c.swatch} transition
-                    ${noticeColor === c.key ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-bg-deep' : 'ring-1 ring-black/10 dark:ring-white/20'}`}
-                />
-              ))}
-            </div>
-            {(notice !== savedNotice || noticeColor !== savedNoticeColor) && (
-              <div className="mt-3 flex items-center gap-2">
-                <button type="button" className="btn-primary !py-1.5 !px-3 text-xs" disabled={savingNotice} onClick={saveNotice}>
-                  {savingNotice ? 'Saving…' : 'Save notice'}
-                </button>
-                <button type="button" className="text-xs text-ink-mute underline" onClick={() => { setNotice(savedNotice); setNoticeColor(savedNoticeColor); }}>
-                  Reset
-                </button>
-              </div>
-            )}
           </div>
         </div>
       </div>

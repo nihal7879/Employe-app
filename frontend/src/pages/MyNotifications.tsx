@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Inbox, MessageSquare, AtSign, ClipboardCheck, Bell, CheckCheck, Mail, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { RefreshCw, Inbox, MessageSquare, AtSign, ClipboardCheck, Bell, CheckCheck, Mail, CheckCircle2, XCircle, Clock, CalendarDays } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
@@ -33,6 +33,7 @@ const TYPE_ICON: Record<string, LucideIcon> = {
   Mention: AtSign,
   Assignment: ClipboardCheck,
   StatusChange: ClipboardCheck,
+  Holiday: CalendarDays,
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -48,7 +49,7 @@ function fmt(d?: string) {
   });
 }
 
-type Tab = 'activity' | 'email';
+type Tab = 'activity' | 'holiday' | 'email';
 
 export default function MyNotifications() {
   const nav = useNavigate();
@@ -61,10 +62,10 @@ export default function MyNotifications() {
 
   const load = () => {
     setLoading(true);
-    const p = tab === 'activity'
-      ? api.get('/notifications/mine', { params: { limit: 50 } }).then((r) => setItems(r.data || [])).catch(() => setItems([]))
+    const p = tab === 'email'
       // Admin sees all sent mail; an employee only their own.
-      : api.get(isAdmin ? '/email-logs' : '/email-logs/mine', { params: { limit: 100 } }).then((r) => setLogs(r.data || [])).catch(() => setLogs([]));
+      ? api.get(isAdmin ? '/email-logs' : '/email-logs/mine', { params: { limit: 100 } }).then((r) => setLogs(r.data || [])).catch(() => setLogs([]))
+      : api.get('/notifications/mine', { params: { limit: 50 } }).then((r) => setItems(r.data || [])).catch(() => setItems([]));
     p.finally(() => setLoading(false));
   };
   useEffect(load, [tab]);
@@ -82,7 +83,13 @@ export default function MyNotifications() {
     load();
   };
 
-  const unread = items.filter((n) => !n.is_read).length;
+  // Holidays get their own tab — keep them out of the Activity feed.
+  const activityItems = items.filter((n) => n.type !== 'Holiday');
+  const holidayItems = items.filter((n) => n.type === 'Holiday');
+  const shown = tab === 'holiday' ? holidayItems : activityItems;
+  const activityUnread = activityItems.filter((n) => !n.is_read).length;
+  const holidayUnread = holidayItems.filter((n) => !n.is_read).length;
+  const unread = tab === 'holiday' ? holidayUnread : activityUnread;
 
   const emailCounts = useMemo(() => {
     const c = { Sent: 0, Failed: 0, Pending: 0 };
@@ -116,20 +123,24 @@ export default function MyNotifications() {
       <div className="flex items-center gap-1.5">
         <button onClick={() => setTab('activity')} className={tabCls(tab === 'activity')}>
           <Bell size={13} className="inline -mt-0.5 mr-1" /> Activity
-          {unread > 0 && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{unread}</span>}
+          {activityUnread > 0 && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{activityUnread}</span>}
+        </button>
+        <button onClick={() => setTab('holiday')} className={tabCls(tab === 'holiday')}>
+          <CalendarDays size={13} className="inline -mt-0.5 mr-1" /> Holidays
+          {holidayUnread > 0 && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{holidayUnread}</span>}
         </button>
         <button onClick={() => setTab('email')} className={tabCls(tab === 'email')}>
           <Mail size={13} className="inline -mt-0.5 mr-1" /> Email
         </button>
       </div>
 
-      {tab === 'activity' ? (
+      {tab !== 'email' ? (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card p-2">
-          {items.length === 0 ? (
+          {shown.length === 0 ? (
             <EmptyState loading={loading} />
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-              {items.map((n) => {
+              {shown.map((n) => {
                 const Icon = TYPE_ICON[n.type] || Bell;
                 const unreadRow = !n.is_read;
                 return (

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, CheckCheck, Clock, Inbox, XCircle, ClipboardList, MessageSquare, AtSign, Activity } from 'lucide-react';
+import { Bell, CheckCheck, Clock, Inbox, XCircle, ClipboardList, MessageSquare, AtSign, Activity, CalendarDays } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import DatePicker from './ui/DatePicker';
@@ -30,6 +30,7 @@ const typeIcon: Record<string, JSX.Element> = {
   Mention: <AtSign size={14} className="text-violet-500" />,
   StatusChange: <Activity size={14} className="text-emerald-500" />,
   Reminder: <Clock size={14} className="text-amber-500" />,
+  Holiday: <CalendarDays size={14} className="text-rose-500" />,
 };
 
 export default function Notifications() {
@@ -38,7 +39,7 @@ export default function Notifications() {
   const nav = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<'activity' | 'email'>('activity');
+  const [tab, setTab] = useState<'activity' | 'holiday' | 'email'>('activity');
 
   // Task activity feed
   const [notifs, setNotifs] = useState<AppNotification[]>([]);
@@ -155,6 +156,11 @@ export default function Notifications() {
 
   const total = taskUnread + emailUnread;
 
+  // Holidays get their own tab — keep them out of the Task activity feed.
+  const holidayNotifs = notifs.filter((n) => n.type === 'Holiday');
+  const activityNotifs = notifs.filter((n) => n.type !== 'Holiday');
+  const holidayUnread = holidayNotifs.filter((n) => !n.is_read).length;
+
   const tabCls = (active: boolean) =>
     `flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-colors inline-flex items-center justify-center gap-1.5 ${
       active
@@ -216,7 +222,10 @@ export default function Notifications() {
             <div className="px-3 pt-3">
               <div className="flex gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/[0.04]">
                 <button onClick={() => setTab('activity')} className={tabCls(tab === 'activity')}>
-                  Task activity {pill(taskUnread)}
+                  Activity {pill(activityNotifs.filter((n) => !n.is_read).length)}
+                </button>
+                <button onClick={() => setTab('holiday')} className={tabCls(tab === 'holiday')}>
+                  Holidays {pill(holidayUnread)}
                 </button>
                 <button onClick={() => setTab('email')} className={tabCls(tab === 'email')}>
                   Emails {pill(emailUnread)}
@@ -237,21 +246,26 @@ export default function Notifications() {
             )}
 
             <div className="mt-2 max-h-96 overflow-y-auto border-t border-slate-100 dark:border-white/10">
-              {tab === 'activity' ? (
-                notifs.length === 0 ? empty('No task notifications yet.') : notifs.map((n) => (
-                  <div key={n.id} onClick={() => openNotif(n)}
-                    className={`px-4 py-3 border-b border-slate-100 dark:border-white/10 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.04] cursor-pointer ${n.is_read ? '' : 'bg-brand-50/40 dark:bg-brand-500/[0.06]'}`}>
-                    <div className="flex items-start gap-3">
-                      <span className="mt-0.5">{typeIcon[n.type] || <Bell size={14} className="text-slate-400" />}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-900 dark:text-white">{n.title}</div>
-                        {n.body && <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{n.body}</div>}
-                        <div className="text-[10px] text-slate-400 mt-0.5">{timeAgo(n.created_at)}</div>
+              {tab === 'activity' || tab === 'holiday' ? (
+                (() => {
+                  const list = tab === 'holiday' ? holidayNotifs : activityNotifs;
+                  return list.length === 0
+                    ? empty(tab === 'holiday' ? 'No holiday notifications yet.' : 'No task notifications yet.')
+                    : list.map((n) => (
+                      <div key={n.id} onClick={() => openNotif(n)}
+                        className={`px-4 py-3 border-b border-slate-100 dark:border-white/10 last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.04] cursor-pointer ${n.is_read ? '' : 'bg-brand-50/40 dark:bg-brand-500/[0.06]'}`}>
+                        <div className="flex items-start gap-3">
+                          <span className="mt-0.5">{typeIcon[n.type] || <Bell size={14} className="text-slate-400" />}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-900 dark:text-white">{n.title}</div>
+                            {n.body && <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{n.body}</div>}
+                            <div className="text-[10px] text-slate-400 mt-0.5">{timeAgo(n.created_at)}</div>
+                          </div>
+                          {!n.is_read && <span className="mt-1.5 h-2 w-2 rounded-full bg-brand-500 shrink-0" />}
+                        </div>
                       </div>
-                      {!n.is_read && <span className="mt-1.5 h-2 w-2 rounded-full bg-brand-500 shrink-0" />}
-                    </div>
-                  </div>
-                ))
+                    ));
+                })()
               ) : (
                 logs.length === 0 ? empty('No notifications yet.') : logs.map((l) => (
                   <div key={l.id} onClick={() => openLog(l)}

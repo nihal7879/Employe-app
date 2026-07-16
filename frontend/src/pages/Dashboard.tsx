@@ -16,6 +16,7 @@ import SegmentedBar, { Segment } from '../components/SegmentedBar';
 import AnimatedNumber from '../components/AnimatedNumber';
 import EmployeeActivityCharts from '../components/EmployeeActivityCharts';
 import NoticeTicker from '../components/NoticeTicker';
+import HolidayInfo from '../components/HolidayInfo';
 import { Skeleton } from '../components/Skeleton';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
@@ -294,6 +295,9 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Scrolling admin notice (hidden when empty) */}
       <NoticeTicker />
+
+      {/* Today-holiday banner + upcoming holidays (hidden when none) */}
+      <HolidayInfo />
 
       {/* Hero greeting */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-6 md:p-8 relative">
