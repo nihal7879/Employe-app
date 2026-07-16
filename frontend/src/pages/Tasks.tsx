@@ -62,6 +62,9 @@ export default function Tasks() {
   // so editing the JSON updates the limit without a frontend rebuild; the
   // build-time const is just the initial fallback.
   const [maxTaskHours, setMaxTaskHours] = useState(APP_CONFIG.maxTaskHours);
+  // Minutes after a task's end_time it may still be logged (the "every 2 hours"
+  // rule). Read live from the server; the build-time const is the fallback.
+  const [taskEntryWindowMinutes, setTaskEntryWindowMinutes] = useState(APP_CONFIG.taskEntryWindowMinutes);
 
   const [params] = useSearchParams();
   const [form, setForm] = useState({
@@ -150,6 +153,7 @@ export default function Tasks() {
       .then((r) => {
         if (r.data?.backdateMaxDays != null) setBackdateMaxDays(Number(r.data.backdateMaxDays));
         if (r.data?.maxTaskHours != null) setMaxTaskHours(Number(r.data.maxTaskHours));
+        if (r.data?.taskEntryWindowMinutes != null) setTaskEntryWindowMinutes(Number(r.data.taskEntryWindowMinutes));
       })
       .catch(() => {});
     // All employees + admins, for the "Assigned By" suggestions.
@@ -193,6 +197,17 @@ export default function Tasks() {
     }
     if (parseFloat(form.hours_spent) > maxTaskHours) {
       toast.error(`A task can be at most ${maxTaskHours} hours. Split it into multiple tasks.`); return;
+    }
+    // "Every 2 hours" entry window: for today's tasks (non-anytime users), the
+    // slot must be logged within taskEntryWindowMinutes of its end_time. Mirrors
+    // the backend guard; backdated dates and log-anytime users are exempt.
+    if (!canLogAnytime && form.task_date === todayStr() && form.end_time) {
+      const [eh, em] = form.end_time.split(':').map(Number);
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      if (nowMins - (eh * 60 + em) > taskEntryWindowMinutes) {
+        toast.error(`The window to log this time slot has closed. You can only log a task within ${taskEntryWindowMinutes} minutes of when it ended.`); return;
+      }
     }
     if (!form.task_title.trim()) {
       toast.error('Enter a task title'); return;

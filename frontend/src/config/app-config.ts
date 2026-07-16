@@ -68,6 +68,16 @@ export const APP_CONFIG = {
   // MAX_TASK_HOURS — keep them in sync. Users split longer work into multiple
   // tasks; the form blocks anything over this before it reaches the server.
   maxTaskHours: envNum('VITE_MAX_TASK_HOURS', 1.5),
+
+  // -----------------------------------------------------------------------
+  // Task entry window ("every 2 hours" rule)
+  // -----------------------------------------------------------------------
+  // Minutes after a task's end_time that it may still be logged. Mirrors the
+  // backend's TASK_ENTRY_WINDOW_MINUTES — keep them in sync. The form blocks a
+  // slot whose window has already closed (for today's tasks) before it reaches
+  // the server. Employees with allow_log_anytime and backdated dates are exempt
+  // (the backend enforces the real rule; this is instant feedback only).
+  taskEntryWindowMinutes: envNum('VITE_TASK_ENTRY_WINDOW_MINUTES', 60),
 };
 
 export type AppConfig = typeof APP_CONFIG;

@@ -172,3 +172,19 @@ body {
     background-size: 200% 100%;
   }
 }
+
+/* Dashboard notice ticker — govt-website style scrolling marquee. The track
+   holds the notice text twice; translating it -50% loops seamlessly. Pauses on
+   hover so a long notice can be read. */
+.notice-marquee-track {
+  display: inline-flex;
+  min-width: 100%;
+  animation: notice-scroll 22s linear infinite;
+}
+.notice-marquee:hover .notice-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes notice-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}

@@ -132,6 +132,31 @@ export const APP_CONFIG = {
   get maxTaskHours(): number { return runtimeNum('maxTaskHours', 'MAX_TASK_HOURS', 1.5); },
 
   // -----------------------------------------------------------------------
+  // Task entry window ("every 2 hours" rule)
+  // -----------------------------------------------------------------------
+  // How many minutes after a task's end_time an employee may still log it.
+  // The window enforced is (task end_time + this). Example with 120: work
+  // finished at 12:00 can be logged until 14:00; at 15:00 that slot is closed.
+  // This is what stops employees from backfilling the whole day at 6 PM — each
+  // 2-hour slot must be logged close to when it happened. Applies to TODAY's
+  // tasks only; bypassed for Admins and the `allow_log_anytime` permission.
+  // Set to 0 to require logging exactly at/before end_time; a very large value
+  // effectively disables the rule.
+  // LIVE-EDITABLE via taskEntryWindowMinutes in runtime-config.json.
+  get taskEntryWindowMinutes(): number { return runtimeNum('taskEntryWindowMinutes', 'TASK_ENTRY_WINDOW_MINUTES', 60); },
+
+  // -----------------------------------------------------------------------
+  // Dashboard notice (scrolling ticker)
+  // -----------------------------------------------------------------------
+  // A single line of text shown scrolling across the top of the employee
+  // Dashboard (govt-website style marquee). Admin-editable from the Permissions
+  // page; an empty string hides the ticker entirely.
+  // LIVE-EDITABLE via dashboardNotice in runtime-config.json.
+  get dashboardNotice(): string {
+    return runtimeStr('dashboardNotice', 'DASHBOARD_NOTICE', 'Please log each task within 60 minutes of finishing it. Entries made more than 1 hour after a task ends will be blocked.');
+  },
+
+  // -----------------------------------------------------------------------
   // GPS audit
   // -----------------------------------------------------------------------
   // After a Login row is inserted, the frontend keeps trying to capture
