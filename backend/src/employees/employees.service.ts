@@ -60,9 +60,23 @@ export class EmployeesService {
   // Toggle the per-employee task-logging permissions (admin only). Only the
   // flags present in the payload are written.
   async setPermissions(id: number, dto: UpdatePermissionsDto) {
-    const patch: Record<string, boolean> = {};
-    if (dto.allow_backdated_tasks !== undefined) patch.allow_backdated_tasks = dto.allow_backdated_tasks;
-    if (dto.allow_log_anytime !== undefined) patch.allow_log_anytime = dto.allow_log_anytime;
+    const patch: Record<string, unknown> = {};
+    if (dto.allow_backdated_tasks !== undefined) {
+      patch.allow_backdated_tasks = dto.allow_backdated_tasks;
+      // Turning it OFF clears any expiry so a later re-grant starts clean.
+      if (!dto.allow_backdated_tasks) patch.allow_backdated_until = null;
+    }
+    if (dto.allow_log_anytime !== undefined) {
+      patch.allow_log_anytime = dto.allow_log_anytime;
+      if (!dto.allow_log_anytime) patch.allow_log_anytime_until = null;
+    }
+    // Expiry: a string sets it, null clears it (permanent). Undefined = leave as is.
+    if (dto.allow_backdated_until !== undefined) {
+      patch.allow_backdated_until = dto.allow_backdated_until ? new Date(dto.allow_backdated_until) : null;
+    }
+    if (dto.allow_log_anytime_until !== undefined) {
+      patch.allow_log_anytime_until = dto.allow_log_anytime_until ? new Date(dto.allow_log_anytime_until) : null;
+    }
     if (Object.keys(patch).length) await this.db('employees').where({ id }).update(patch);
     return this.findOne(id);
   }

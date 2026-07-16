@@ -106,6 +106,22 @@ export default function Reports() {
     return p ? [p] : [];
   });
 
+  // Sync from the URL whenever it changes — not just on mount. A comment
+  // notification deep-links to /reports?tab=day-view&employee=X&date=Y&task=Z;
+  // if the admin is ALREADY on Reports, the useState initializers above won't
+  // re-run, so without this the page ignores the new params (wrong tab/employee)
+  // and the task modal never opens. Runs only when the query string changes, so
+  // it never fights the admin's own in-page selections.
+  useEffect(() => {
+    const t = params.get('tab') as Tab | null;
+    if (t) setTab(t);
+    const d = params.get('date');
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
+    const emp = params.get('employee');
+    if (emp) setDayEmployees([emp]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
   useEffect(() => {
     if (tab !== 'drilldown' && tab !== 'day-view') return;
     Promise.all([

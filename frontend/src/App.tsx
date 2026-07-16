@@ -45,12 +45,14 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
+          {/* In-app notification feed — available to everyone (admins get the
+              "employee replied" comments here too). */}
+          <Route path="/notifications" element={<MyNotifications />} />
           <Route element={<ProtectedRoute employeeOnly />}>
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/my-tasks" element={<MyTasks />} />
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/my-activity" element={<MyActivity />} />
-            <Route path="/notifications" element={<MyNotifications />} />
           </Route>
           <Route element={<ProtectedRoute staffOnly />}>
             <Route path="/assign-tasks" element={<AssignTasks />} />

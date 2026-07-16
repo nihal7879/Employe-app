@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Megaphone } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../auth/AuthContext';
 
 // Text colour presets the admin can choose (Permissions page). Only the
 // scrolling message text is coloured — the "Notice" badge keeps its brand style.
@@ -18,19 +19,22 @@ const TEXT_COLORS: Record<string, string> = {
 // an empty notice renders nothing. The text is duplicated inside the marquee so
 // the scroll loops seamlessly with no visible gap.
 export default function NoticeTicker() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
   const [notice, setNotice] = useState('');
   const [color, setColor] = useState('red');
 
   useEffect(() => {
+    if (isAdmin) return; // notice is for employees only — admins set it, don't see it
     api.get('/config')
       .then((r) => {
         setNotice(String(r.data?.dashboardNotice ?? '').trim());
         if (r.data?.dashboardNoticeColor) setColor(String(r.data.dashboardNoticeColor));
       })
       .catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
-  if (!notice) return null;
+  if (isAdmin || !notice) return null;
 
   const textClass = TEXT_COLORS[color] || TEXT_COLORS.red;
 

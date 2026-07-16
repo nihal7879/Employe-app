@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEmail, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsInt, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export class CreateEmployeeDto {
   @IsString() @MaxLength(50) employee_code: string;
@@ -28,4 +28,10 @@ export class UpdateEmployeeDto {
 export class UpdatePermissionsDto {
   @IsOptional() @IsBoolean() allow_backdated_tasks?: boolean;
   @IsOptional() @IsBoolean() allow_log_anytime?: boolean;
+  // Optional expiry (ISO datetime). null clears it → permanent. Omit to leave
+  // the current value untouched.
+  @IsOptional() @ValidateIf((o) => o.allow_backdated_until !== null) @IsDateString()
+  allow_backdated_until?: string | null;
+  @IsOptional() @ValidateIf((o) => o.allow_log_anytime_until !== null) @IsDateString()
+  allow_log_anytime_until?: string | null;
 }

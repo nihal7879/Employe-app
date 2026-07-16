@@ -1,10 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Clock, Coffee, Trash2, Plus, Eye, Pencil } from 'lucide-react';
+import { Clock, Coffee, Trash2, Plus, Eye, Pencil, MessageSquare, Send, Ban } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuth } from '../auth/AuthContext';
 import type { DailyTask } from '../types';
+
+type TaskComment = {
+  id: number;
+  body: string;
+  author_id: number;
+  author_name: string;
+  author_role?: string;
+  created_at: string;
+  edited_at?: string | null;
+  is_deleted?: boolean | number;
+};
 import DatePicker from './ui/DatePicker';
 import TimePicker from './ui/TimePicker';
 import ConfirmDialog from './ConfirmDialog';
@@ -152,6 +164,38 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [range.from, range.to, employeeId]);
+
+  // Deep link from a comment notification: ?task=<id> auto-opens that task's
+  // detail (with comments) once the list has loaded. Opens only once so the
+  // employee can freely close it.
+  // The last ?task id we auto-opened. Tracking the id (not a boolean) lets a
+  // NEW notification click re-open even when the page doesn't remount — e.g.
+  // clicking a second notification from the bell while already on this page.
+  const lastOpenedTaskRef = useRef<string | null>(null);
+  // True when the currently-open detail modal was opened from a notification
+  // deep link — tells the modal to scroll to and highlight the new comment.
+  const [focusComments, setFocusComments] = useState(false);
+  useEffect(() => {
+    const tid = searchParams.get('task');
+    // No param (incl. right after we clear it) → reset so the SAME notification
+    // can open again on a later click.
+    if (!tid) { lastOpenedTaskRef.current = null; return; }
+    if (loading || lastOpenedTaskRef.current === tid) return;
+    const found = tasks.find((t) => String(t.id) === tid);
+    if (!found) return;
+    // Mark this task id as handled so browsing (e.g. switching employees on the
+    // Reports day view, which keeps ?task in the URL) does NOT reopen it — only
+    // a NEW notification (a different id) opens the modal. We do NOT clear the
+    // URL param: doing so re-ran this effect and its cleanup cancelled the
+    // pending open before it fired.
+    lastOpenedTaskRef.current = tid;
+    // Defer past the page/route transition (~220ms) so the modal opens into a
+    // settled page — opening mid-transition made it flash open, tear down, and
+    // reopen ("loads twice"). A single clean open, like a normal click.
+    const t = setTimeout(() => { setViewTask(found); setFocusComments(true); }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, loading, searchParams]);
 
   // Day view only: fetch the first 8AM-11:59PM Login of the selected date as
   // the actual start-of-work time. Empty in week/month/range — those don't
@@ -358,7 +402,7 @@ export default function MyTimeTracker({ employeeId, adminView = false, initialDa
         onClose={() => setConfirmId(null)}
       />
 
-      <TaskDetailModal task={viewTask} onClose={() => setViewTask(null)} />
+      <TaskDetailModal task={viewTask} focusComments={focusComments} onClose={() => { setViewTask(null); setFocusComments(false); }} />
 
       <EditTaskModal
         task={editTask}
@@ -573,7 +617,7 @@ function EditTaskModal({ task, onClose, onSaved, minTime }: {
   );
 }
 
-function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: () => void }) {
+function TaskDetailModal({ task, onClose, focusComments = false }: { task: DailyTask | null; onClose: () => void; focusComments?: boolean }) {
   return (
     <Modal open={!!task} title="Task details" onClose={onClose} size="lg">
       {task && (
@@ -599,9 +643,206 @@ function TaskDetailModal({ task, onClose }: { task: DailyTask | null; onClose: (
             <DetailField label="Time" value={`${task.start_time || '—'} → ${task.end_time || '—'}`} />
             <DetailField label="Progress" value={task.progress_status} />
           </div>
+
+          <TaskComments taskId={task.id} focusOnLoad={focusComments} />
         </div>
       )}
     </Modal>
+  );
+}
+
+// Comment thread on a daily task. An admin can leave a comment on an employee's
+// logged task; the employee sees it here and replies. Loads on open, posts to
+// /daily-tasks/:id/comments (backend enforces who may access which task).
+function TaskComments({ taskId, focusOnLoad = false }: { taskId: number; focusOnLoad?: boolean }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [body, setBody] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editBody, setEditBody] = useState('');
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  // When opened from a notification, scroll to the comments and briefly
+  // highlight the newest one so the reader sees what's new.
+  const sectionRef = useRef<HTMLDivElement | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+
+  // Set once comments have loaded on a notification-open, so the layout effect
+  // below can snap to them exactly once (not on every later re-render).
+  const pendingScrollRef = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    api.get(`/daily-tasks/${taskId}/comments`)
+      .then((r) => {
+        if (!alive) return;
+        const list: TaskComment[] = r.data || [];
+        setComments(list);
+        if (focusOnLoad && list.length) {
+          setHighlightId(list[list.length - 1].id);
+          pendingScrollRef.current = true;   // snap after this render commits
+          setTimeout(() => setHighlightId(null), 3200);
+        }
+      })
+      .catch(() => { if (alive) setComments([]); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [taskId, focusOnLoad]);
+
+  // Snap the modal's OWN scroll container to the comments BEFORE the browser
+  // paints — so the modal appears already at the comments in one clean frame,
+  // no sliding, and without ever scrolling the window/page. Runs only when a
+  // notification-open flagged it (pendingScrollRef).
+  useLayoutEffect(() => {
+    if (!pendingScrollRef.current) return;
+    pendingScrollRef.current = false;
+    const el = sectionRef.current;
+    const scroller = el?.closest('.overflow-y-auto') as HTMLElement | null;
+    if (el && scroller) {
+      const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 12;
+      scroller.scrollTop = top; // instant, modal body only
+    }
+  }, [comments]);
+
+  const send = async () => {
+    const text = body.trim();
+    if (!text) return;
+    setSending(true);
+    try {
+      const r = await api.post(`/daily-tasks/${taskId}/comments`, { body: text });
+      setComments(r.data || []);
+      setBody('');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to comment');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const saveEdit = async (id: number) => {
+    const text = editBody.trim();
+    if (!text) return;
+    setBusyId(id);
+    try {
+      const r = await api.put(`/daily-tasks/${taskId}/comments/${id}`, { body: text });
+      setComments(r.data || []);
+      setEditId(null); setEditBody('');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to edit');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (id: number) => {
+    setBusyId(id);
+    try {
+      const r = await api.delete(`/daily-tasks/${taskId}/comments/${id}`);
+      setComments(r.data || []);
+      setConfirmDeleteId(null);
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to delete');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div ref={sectionRef} className="pt-3 border-t border-slate-100 dark:border-white/10 scroll-mt-4">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+        <MessageSquare size={13} /> Comments
+      </div>
+      <div className="space-y-2">
+        {loading ? (
+          <p className="text-xs text-slate-400">Loading…</p>
+        ) : comments.length === 0 ? (
+          <p className="text-xs text-slate-400">No comments yet.</p>
+        ) : (
+          comments.map((c) => {
+            const deleted = !!c.is_deleted;
+            const mine = c.author_id === user?.id;
+            const canEdit = mine && !deleted;               // only the author edits
+            const canDelete = (mine || isAdmin) && !deleted; // author or admin deletes
+            const editing = editId === c.id;
+            // WhatsApp-style tombstone: the row is kept, the text is gone.
+            if (deleted) {
+              return (
+                <div key={c.id} className={`rounded-lg px-3 py-2 ${mine ? 'bg-brand-50 dark:bg-brand-500/10' : 'bg-slate-50 dark:bg-white/[0.03]'}`}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">{c.author_name || 'Unknown'}</span>
+                    <span className="text-[10px] text-slate-400">{new Date(String(c.created_at).replace(' ', 'T')).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-0.5 text-sm italic text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Ban size={13} /> This message was deleted
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div key={c.id} className={`group rounded-lg px-3 py-2 transition-colors duration-700 ${highlightId === c.id ? 'ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-500/10' : mine ? 'bg-brand-50 dark:bg-brand-500/10' : 'bg-slate-50 dark:bg-white/[0.03]'}`}>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{c.author_name || 'Unknown'}</span>
+                  <span className="text-[10px] text-slate-400">{new Date(String(c.created_at).replace(' ', 'T')).toLocaleString()}</span>
+                  {c.edited_at && <span className="text-[10px] text-slate-400 italic">· edited</span>}
+                  {!editing && (canEdit || canDelete) && (
+                    <span className="ml-auto flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {canEdit && (
+                        <button type="button" title="Edit" onClick={() => { setEditId(c.id); setEditBody(c.body); }} className="text-slate-400 hover:text-brand-600">
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button type="button" title="Delete" onClick={() => setConfirmDeleteId(c.id)} className="text-slate-400 hover:text-rose-500">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
+                {editing ? (
+                  <div className="mt-1.5 space-y-2">
+                    <textarea rows={2} value={editBody} onChange={(e) => setEditBody(e.target.value)} className="w-full resize-y text-sm" />
+                    <div className="flex justify-end gap-2">
+                      <button type="button" className="btn-secondary !py-1 !px-2.5 text-xs" onClick={() => { setEditId(null); setEditBody(''); }}>Cancel</button>
+                      <button type="button" className="btn-primary !py-1 !px-2.5 text-xs" disabled={busyId === c.id || !editBody.trim()} onClick={() => saveEdit(c.id)}>Save</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{c.body}</p>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="mt-3 flex items-end gap-2">
+        <textarea
+          rows={2}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
+          placeholder="Write a comment…"
+          className="flex-1 resize-y text-sm"
+        />
+        <button type="button" onClick={send} disabled={sending || !body.trim()} className="btn-primary shrink-0">
+          <Send size={15} /> Send
+        </button>
+      </div>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Delete comment?"
+        message="This comment will be removed from the thread and shown as “This message was deleted”."
+        confirmLabel="Delete"
+        danger
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => confirmDeleteId !== null && remove(confirmDeleteId)}
+      />
+    </div>
   );
 }
 
@@ -934,8 +1175,13 @@ function DayTable({ tasks, projectColors, note, onDelete, onView, onEdit }: {
                 <td className="table-td text-left">
                   <div className="flex items-center justify-start gap-2.5">
                     {onView && (
-                      <button onClick={() => onView(t)} className="text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors" title="View task details">
+                      <button onClick={() => onView(t)} className="relative text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors" title={Number(t.comment_count) > 0 ? `View · ${t.comment_count} comment(s)` : 'View task details'}>
                         <Eye size={16} />
+                        {Number(t.comment_count) > 0 && (
+                          <span className="absolute -top-2 -right-2 inline-flex items-center gap-0.5 rounded-full bg-brand-600 text-white text-[9px] font-bold leading-none px-1 py-0.5">
+                            <MessageSquare size={8} />{t.comment_count}
+                          </span>
+                        )}
                       </button>
                     )}
                     {onEdit && t.task_date === today && (

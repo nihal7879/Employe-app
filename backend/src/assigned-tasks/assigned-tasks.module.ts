@@ -215,6 +215,7 @@ class AssignedTasksService {
     const comments = await this.db('assigned_task_comments as c')
       .leftJoin('employees as e', 'c.author_id', 'e.id')
       .where('c.task_id', id)
+      .andWhere((qb) => qb.where('c.is_deleted', false).orWhereNull('c.is_deleted'))
       .orderBy('c.created_at', 'asc')
       .select('c.*', 'e.name as author_name');
     // Resolve @mention ids → names so the thread can show "@Name" chips.
@@ -516,6 +517,34 @@ class AssignedTasksService {
     }
     return this.findOne(user, id);
   }
+
+  // Edit a comment — author only. Stamps edited_at so the UI shows "edited".
+  async editComment(user: AuthUser, taskId: number, commentId: number, body: string) {
+    const task = await this.db('assigned_tasks').where({ id: taskId, is_deleted: false }).first();
+    if (!task) throw new NotFoundException('Task not found');
+    await this.assertCanView(user, task);
+    const text = String(body || '').trim();
+    if (!text) throw new BadRequestException('Comment cannot be empty.');
+    const row = await this.db('assigned_task_comments').where({ id: commentId, task_id: taskId }).first('id', 'author_id', 'is_deleted');
+    if (!row || row.is_deleted) throw new NotFoundException('Comment not found');
+    if (row.author_id !== user.id) throw new ForbiddenException('You can only edit your own comment.');
+    await this.db('assigned_task_comments').where({ id: commentId }).update({ body: text, edited_at: this.db.fn.now() });
+    return this.findOne(user, taskId);
+  }
+
+  // Delete a comment — the author, or an admin (moderation).
+  async deleteComment(user: AuthUser, taskId: number, commentId: number) {
+    const task = await this.db('assigned_tasks').where({ id: taskId, is_deleted: false }).first();
+    if (!task) throw new NotFoundException('Task not found');
+    await this.assertCanView(user, task);
+    const row = await this.db('assigned_task_comments').where({ id: commentId, task_id: taskId }).first('id', 'author_id', 'is_deleted');
+    if (!row || row.is_deleted) throw new NotFoundException('Comment not found');
+    if (user.role !== 'Admin' && row.author_id !== user.id) {
+      throw new ForbiddenException('You can only delete your own comment.');
+    }
+    await this.db('assigned_task_comments').where({ id: commentId }).update({ is_deleted: true });
+    return this.findOne(user, taskId);
+  }
 }
 
 @Controller('assigned-tasks')
@@ -589,6 +618,25 @@ class AssignedTasksController {
   @Post(':id/comments')
   comment(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: CommentDto) {
     return this.s.addComment(user, id, dto);
+  }
+
+  @Put(':id/comments/:commentId')
+  editComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @Body('body') body: string,
+  ) {
+    return this.s.editComment(user, id, commentId, body);
+  }
+
+  @Delete(':id/comments/:commentId')
+  deleteComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('commentId', ParseIntPipe) commentId: number,
+  ) {
+    return this.s.deleteComment(user, id, commentId);
   }
 
   @Delete(':id')

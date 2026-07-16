@@ -23,6 +23,9 @@ export interface Employee {
   is_active: boolean;
   allow_backdated_tasks?: boolean;
   allow_log_anytime?: boolean;
+  // Optional expiry for each permission (ISO datetime). null = permanent.
+  allow_backdated_until?: string | null;
+  allow_log_anytime_until?: string | null;
 }
 
 /** Minimal employee shape returned by GET /assigned-tasks/assignees. */
@@ -75,6 +78,7 @@ export interface AssignedTaskComment {
   mentions?: string | null;
   mention_names?: string[];
   created_at: string;
+  edited_at?: string | null;
 }
 
 export interface AssignedTaskActivity {
@@ -163,4 +167,6 @@ export interface DailyTask {
   updated_device?: string;
   updated_browser?: string;
   created_at?: string;
+  // Number of comments on the task (from the list query) — drives the row badge.
+  comment_count?: number;
 }

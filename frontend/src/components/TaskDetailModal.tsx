@@ -70,6 +70,8 @@ export default function TaskDetailModal({
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...blankEdit });
   const [editAssignees, setEditAssignees] = useState<string[]>([]);
+  const [editCommentId, setEditCommentId] = useState<number | null>(null);
+  const [editCommentBody, setEditCommentBody] = useState('');
 
   const load = async (autoEdit = false) => {
     if (!taskId) return;
@@ -186,6 +188,33 @@ export default function TaskDetailModal({
       onChanged?.();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed to comment');
+    } finally { setBusy(false); }
+  };
+
+  const saveEditComment = async (commentId: number) => {
+    if (!task) return;
+    const text = editCommentBody.trim();
+    if (!text) return;
+    setBusy(true);
+    try {
+      const r = await api.put(`/assigned-tasks/${task.id}/comments/${commentId}`, { body: text });
+      setTask(r.data);
+      setEditCommentId(null);
+      setEditCommentBody('');
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to edit comment');
+    } finally { setBusy(false); }
+  };
+
+  const deleteComment = async (commentId: number) => {
+    if (!task) return;
+    if (!window.confirm('Delete this comment?')) return;
+    setBusy(true);
+    try {
+      const r = await api.delete(`/assigned-tasks/${task.id}/comments/${commentId}`);
+      setTask(r.data);
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to delete comment');
     } finally { setBusy(false); }
   };
 
@@ -352,15 +381,43 @@ export default function TaskDetailModal({
             <div className="label flex items-center gap-1.5"><MessageSquare size={14} /> Comments</div>
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {(task.comments || []).length === 0 && <p className="text-xs text-slate-400">No comments yet.</p>}
-              {(task.comments || []).map((c) => (
-                <div key={c.id} className="rounded-lg bg-slate-50 dark:bg-white/[0.03] px-3 py-2">
+              {(task.comments || []).map((c) => {
+                const mine = c.author_id === user?.id;
+                const editing = editCommentId === c.id;
+                return (
+                <div key={c.id} className="group rounded-lg bg-slate-50 dark:bg-white/[0.03] px-3 py-2">
                   <div className="flex items-baseline gap-2">
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{c.author_name}</span>
                     <span className="text-[10px] text-slate-400">{new Date(c.created_at.replace(' ', 'T')).toLocaleString()}</span>
+                    {c.edited_at && <span className="text-[10px] text-slate-400 italic">· edited</span>}
+                    {!editing && (mine || user?.role === 'Admin') && (
+                      <span className="ml-auto flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {mine && (
+                          <button type="button" title="Edit" onClick={() => { setEditCommentId(c.id); setEditCommentBody(c.body); }} className="text-slate-400 hover:text-brand-600">
+                            <Pencil size={12} />
+                          </button>
+                        )}
+                        <button type="button" title="Delete" onClick={() => deleteComment(c.id)} className="text-slate-400 hover:text-rose-500">
+                          <X size={13} />
+                        </button>
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{renderWithMentions(c.body, c.mention_names)}</p>
+                  {editing ? (
+                    <div className="mt-1.5 space-y-2">
+                      <textarea rows={2} value={editCommentBody} onChange={(e) => setEditCommentBody(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-sm outline-none focus:border-brand-500" />
+                      <div className="flex justify-end gap-2">
+                        <button type="button" className="btn-secondary !py-1 !px-2.5 text-xs" onClick={() => { setEditCommentId(null); setEditCommentBody(''); }}>Cancel</button>
+                        <button type="button" className="btn-primary !py-1 !px-2.5 text-xs" disabled={busy || !editCommentBody.trim()} onClick={() => saveEditComment(c.id)}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{renderWithMentions(c.body, c.mention_names)}</p>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="mt-3 space-y-2">
               <MentionTextarea
