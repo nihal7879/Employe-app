@@ -310,6 +310,41 @@ export class SchedulerService {
     });
   }
 
+  // ===== Every 5 minutes — auto-close expired task-logging permissions =====
+  // When an admin granted "Backdate tasks" / "Log anytime" with an expiry, this
+  // flips the flag off once the time passes and notifies the employee. The task
+  // guard already denies an expired window in real time (see employeePerms); this
+  // keeps the stored state honest and delivers the "your window closed" notice.
+  @Cron(CronExpression.EVERY_5_MINUTES, { name: 'close-expired-permissions', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
+  async closeExpiredPermissions() {
+    const now = new Date();
+    const perms: { flag: string; until: string; label: string }[] = [
+      { flag: 'allow_backdated_tasks', until: 'allow_backdated_until', label: 'Backdated task entry' },
+      { flag: 'allow_log_anytime', until: 'allow_log_anytime_until', label: 'Log anytime' },
+    ];
+    for (const p of perms) {
+      const expired = await this.db('employees')
+        .where(p.flag, true)
+        .whereNotNull(p.until)
+        .andWhere(p.until, '<=', now)
+        .andWhere({ is_active: true, is_deleted: false })
+        .select('id', 'name');
+      if (!expired.length) continue;
+      const ids = expired.map((e) => e.id);
+      await this.db('employees').whereIn('id', ids).update({ [p.flag]: false });
+      for (const e of expired) {
+        await this.notify.create({
+          recipient_id: e.id,
+          type: 'Reminder',
+          title: `${p.label} window closed`,
+          body: `Your "${p.label}" permission has expired. Contact an admin if you still need it.`,
+          link: '/my-activity',
+        });
+      }
+      this.logger.log(`Closed expired "${p.flag}" for ${ids.length} employee(s)`);
+    }
+  }
+
   // ===== 1st of every month 8:00 AM — monthly summary to admin =====
   @Cron('0 0 8 1 * *', { name: 'monthly-admin-summary', timeZone: process.env.APP_TZ || 'Asia/Kolkata' })
   async monthlyAdminSummary() {

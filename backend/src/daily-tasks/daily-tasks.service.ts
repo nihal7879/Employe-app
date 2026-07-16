@@ -5,10 +5,14 @@ import type { RequestContext } from '../common/utils/request-context';
 import { CreateDailyTaskDto, ListDailyTasksDto, UpdateDailyTaskDto } from './dto/daily-task.dto';
 import { APP_CONFIG } from '../config/app-config';
 import { LOGGING_ROLE_NAMES } from '../common/constants';
+import { NotificationsService } from '../notifications/notifications.module';
 
 @Injectable()
 export class DailyTasksService {
-  constructor(@Inject(KNEX_CONNECTION) private readonly db: Knex) {}
+  constructor(
+    @Inject(KNEX_CONNECTION) private readonly db: Knex,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   private base() {
     return this.db('daily_tasks')
@@ -28,6 +32,13 @@ export class DailyTasksService {
         'projects.project_name as project_name',
         'projects.project_code as project_code',
         'activities.activity_name as activity_name',
+        // Number of (non-deleted) comments on the task, so the UI can show a
+        // "has comments" badge on each row without an extra request per task.
+        this.db('daily_task_comments')
+          .count('*')
+          .whereRaw('daily_task_comments.daily_task_id = daily_tasks.id')
+          .andWhere('daily_task_comments.is_deleted', false)
+          .as('comment_count'),
       );
   }
 
@@ -87,10 +98,16 @@ export class DailyTasksService {
   private async employeePerms(employee_id: number) {
     const row = await this.db('employees')
       .where({ id: employee_id })
-      .first('allow_backdated_tasks', 'allow_log_anytime');
+      .first('allow_backdated_tasks', 'allow_log_anytime', 'allow_backdated_until', 'allow_log_anytime_until');
+    // A permission is active only if its flag is on AND (no expiry OR the expiry
+    // is still in the future). This denies an expired window at task time even
+    // before the background sweep flips the flag off.
+    const now = Date.now();
+    const active = (flag: unknown, until: unknown) =>
+      !!flag && (until == null || new Date(until as string).getTime() > now);
     return {
-      allow_backdated_tasks: !!row?.allow_backdated_tasks,
-      allow_log_anytime: !!row?.allow_log_anytime,
+      allow_backdated_tasks: active(row?.allow_backdated_tasks, row?.allow_backdated_until),
+      allow_log_anytime: active(row?.allow_log_anytime, row?.allow_log_anytime_until),
     };
   }
 
@@ -361,6 +378,139 @@ export class DailyTasksService {
     } : {};
     await this.db('daily_tasks').where({ id }).update({ is_deleted: true, is_active: false, ...auditFields });
     return { success: true };
+  }
+
+  // ------- Comments on a daily task -------
+
+  // Admin may view/comment on anyone's task; an employee only on their own.
+  private async assertCanAccessTask(taskId: number, user: { id: number; role: string }) {
+    const task = await this.db('daily_tasks').where({ id: taskId, is_deleted: false }).first('id', 'employee_id');
+    if (!task) throw new NotFoundException('Daily task not found');
+    if (user.role !== 'Admin' && task.employee_id !== user.id) {
+      throw new ForbiddenException('You can only view comments on your own task.');
+    }
+    return task;
+  }
+
+  async listComments(taskId: number, user: { id: number; role: string }) {
+    await this.assertCanAccessTask(taskId, user);
+    // Deleted comments are kept in the thread as a "This message was deleted"
+    // tombstone (WhatsApp-style) — the row stays in the DB, but we never send
+    // the original text back to the client.
+    const rows = await this.db('daily_task_comments as c')
+      .leftJoin('employees as e', 'e.id', 'c.author_id')
+      .leftJoin('roles as r', 'e.role_id', 'r.id')
+      .where('c.daily_task_id', taskId)
+      .orderBy('c.created_at', 'asc')
+      .select(
+        'c.id',
+        'c.body',
+        'c.is_deleted',
+        'c.author_id',
+        'c.created_at',
+        'c.edited_at',
+        'e.name as author_name',
+        'r.role_name as author_role',
+      );
+    return rows.map((c: any) => {
+      const deleted = !!c.is_deleted;
+      return { ...c, is_deleted: deleted, body: deleted ? '' : c.body, edited_at: deleted ? null : c.edited_at };
+    });
+  }
+
+  // Edit a comment — author only. Stamps edited_at so the UI shows "edited".
+  async editComment(taskId: number, commentId: number, user: { id: number; role: string }, body: string) {
+    await this.assertCanAccessTask(taskId, user);
+    const text = String(body || '').trim();
+    if (!text) throw new ConflictException('Comment cannot be empty.');
+    const row = await this.db('daily_task_comments')
+      .where({ id: commentId, daily_task_id: taskId, is_deleted: false })
+      .first('id', 'author_id');
+    if (!row) throw new NotFoundException('Comment not found');
+    if (row.author_id !== user.id) throw new ForbiddenException('You can only edit your own comment.');
+    await this.db('daily_task_comments')
+      .where({ id: commentId })
+      .update({ body: text, edited_at: this.db.fn.now() });
+    return this.listComments(taskId, user);
+  }
+
+  // Delete a comment — the author, or an admin (for moderation).
+  async deleteComment(taskId: number, commentId: number, user: { id: number; role: string }) {
+    await this.assertCanAccessTask(taskId, user);
+    const row = await this.db('daily_task_comments')
+      .where({ id: commentId, daily_task_id: taskId, is_deleted: false })
+      .first('id', 'author_id');
+    if (!row) throw new NotFoundException('Comment not found');
+    if (user.role !== 'Admin' && row.author_id !== user.id) {
+      throw new ForbiddenException('You can only delete your own comment.');
+    }
+    await this.db('daily_task_comments').where({ id: commentId }).update({ is_deleted: true });
+    return this.listComments(taskId, user);
+  }
+
+  async addComment(taskId: number, user: { id: number; role: string }, body: string) {
+    const task = await this.assertCanAccessTask(taskId, user);
+    const text = String(body || '').trim();
+    if (!text) throw new ConflictException('Comment cannot be empty.');
+    await this.db('daily_task_comments').insert({
+      daily_task_id: taskId,
+      author_id: user.id,
+      body: text,
+    });
+    await this.notifyOnComment(task, user, text);
+    return this.listComments(taskId, user);
+  }
+
+  // Drop a bell notification (+ email) for the other party on a task comment.
+  // When the task owner comments, notify all admins; when anyone else (admin)
+  // comments, notify the task owner. Best-effort — a notify failure must never
+  // break the comment write.
+  private async notifyOnComment(
+    task: { id: number; employee_id: number },
+    author: { id: number },
+    text: string,
+  ) {
+    try {
+      const meta = await this.db('daily_tasks')
+        .where({ id: task.id })
+        .first('task_title', 'task_date');
+      const authorRow = await this.db('employees').where({ id: author.id }).first('name');
+      const authorName = authorRow?.name || 'Someone';
+      const bodyPreview = text.length > 140 ? text.slice(0, 140) + '…' : text;
+      const dateStr = meta?.task_date ? String(meta.task_date).slice(0, 10) : '';
+
+      if (author.id === task.employee_id) {
+        // Employee replied → notify admins. Deep-link to Reports for that day.
+        const admins = await this.db('employees')
+          .where({ is_active: true, is_deleted: false })
+          .whereIn('role_id', this.db('roles').where('role_name', 'Admin').select('id'))
+          .pluck('id');
+        await this.notifications.createMany(
+          admins,
+          {
+            type: 'Comment',
+            title: `${authorName} replied on a task`,
+            body: `${meta?.task_title || 'Task'} (${dateStr}): ${bodyPreview}`,
+            link: `/reports?tab=day-view&employee=${task.employee_id}&date=${dateStr}&task=${task.id}`,
+            task_id: task.id,
+          },
+          author.id,
+        );
+      } else {
+        // Admin commented → notify the task owner. Deep-link straight to the
+        // task's detail (with comments) on My Activity.
+        await this.notifications.create({
+          recipient_id: task.employee_id,
+          type: 'Comment',
+          title: `New comment on your task`,
+          body: `${authorName} commented on "${meta?.task_title || 'your task'}": ${bodyPreview}`,
+          link: `/my-activity?task=${task.id}&date=${dateStr}`,
+          task_id: task.id,
+        });
+      }
+    } catch {
+      /* best-effort notify — ignore */
+    }
   }
 
   // ------- Helpers used by reports & scheduler -------

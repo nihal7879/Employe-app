@@ -188,3 +188,17 @@ body {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
 }
+
+/* Slim scrollbar for the sidebar nav (and anything else that opts in). Narrower
+   than the OS default so it doesn't crowd the menu labels. */
+.thin-scrollbar {
+  scrollbar-width: thin;                        /* Firefox */
+  scrollbar-color: rgba(148,163,184,0.5) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.45);
+  border-radius: 9999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.7); }

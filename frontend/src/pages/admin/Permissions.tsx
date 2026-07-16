@@ -7,6 +7,31 @@ import { TableSkeleton } from '../../components/Skeleton';
 import { APP_CONFIG } from '../../config/app-config';
 
 type PermKey = 'allow_backdated_tasks' | 'allow_log_anytime';
+type UntilKey = 'allow_backdated_until' | 'allow_log_anytime_until';
+
+const UNTIL_KEY: Record<PermKey, UntilKey> = {
+  allow_backdated_tasks: 'allow_backdated_until',
+  allow_log_anytime: 'allow_log_anytime_until',
+};
+
+// ISO (stored) → value for <input type="datetime-local"> in the admin's local
+// time ("YYYY-MM-DDTHH:MM").
+function toLocalInput(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function expiryLabel(iso?: string | null): { text: string; expired: boolean } | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const expired = d.getTime() <= Date.now();
+  const text = d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return { text, expired };
+}
 
 // Notice text-colour presets (must match the keys the backend accepts and the
 // NoticeTicker renders). `swatch` is the button preview colour.
@@ -105,8 +130,9 @@ export default function Permissions() {
     const next = !emp[key];
     const flight = `${emp.id}:${key}`;
     setSaving(flight);
-    // Optimistic update — revert on failure.
-    setEmployees((list) => list.map((e) => (e.id === emp.id ? { ...e, [key]: next } : e)));
+    // Optimistic update — revert on failure. Turning off also clears the expiry.
+    const untilKey = UNTIL_KEY[key];
+    setEmployees((list) => list.map((e) => (e.id === emp.id ? { ...e, [key]: next, ...(next ? {} : { [untilKey]: null }) } : e)));
     try {
       await api.patch(`/employees/${emp.id}/permissions`, { [key]: next });
     } catch {
@@ -114,6 +140,21 @@ export default function Permissions() {
       toast.error('Could not update permission');
     } finally {
       setSaving((s) => (s === flight ? null : s));
+    }
+  };
+
+  // Save (or clear) the expiry for a permission. value = local datetime string
+  // from the picker, or null to make it permanent.
+  const saveUntil = async (emp: Employee, key: PermKey, value: string | null) => {
+    const untilKey = UNTIL_KEY[key];
+    const iso = value ? new Date(value).toISOString() : null;
+    setEmployees((list) => list.map((e) => (e.id === emp.id ? { ...e, [untilKey]: iso } : e)));
+    try {
+      await api.patch(`/employees/${emp.id}/permissions`, { [untilKey]: iso });
+      toast.success(iso ? 'Expiry set' : 'Made permanent');
+    } catch {
+      toast.error('Could not update expiry');
+      load();
     }
   };
 
@@ -250,17 +291,21 @@ export default function Permissions() {
                     </td>
                     <td className="table-td text-sm text-slate-600 dark:text-slate-300">{e.department_name || '—'}</td>
                     <td className="table-td text-center">
-                      <Toggle
+                      <PermCell
                         on={!!e.allow_backdated_tasks}
                         busy={saving === `${e.id}:allow_backdated_tasks`}
-                        onClick={() => toggle(e, 'allow_backdated_tasks')}
+                        until={e.allow_backdated_until}
+                        onToggle={() => toggle(e, 'allow_backdated_tasks')}
+                        onSaveUntil={(v) => saveUntil(e, 'allow_backdated_tasks', v)}
                       />
                     </td>
                     <td className="table-td text-center">
-                      <Toggle
+                      <PermCell
                         on={!!e.allow_log_anytime}
                         busy={saving === `${e.id}:allow_log_anytime`}
-                        onClick={() => toggle(e, 'allow_log_anytime')}
+                        until={e.allow_log_anytime_until}
+                        onToggle={() => toggle(e, 'allow_log_anytime')}
+                        onSaveUntil={(v) => saveUntil(e, 'allow_log_anytime', v)}
                       />
                     </td>
                   </tr>
@@ -270,6 +315,61 @@ export default function Permissions() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// One permission cell: the on/off toggle plus, when on, an optional expiry.
+// Blank expiry = permanent; a set expiry auto-closes the permission when it
+// passes (enforced server-side).
+function PermCell({
+  on, busy, until, onToggle, onSaveUntil,
+}: {
+  on: boolean;
+  busy: boolean;
+  until?: string | null;
+  onToggle: () => void;
+  onSaveUntil: (value: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState('');
+  const label = expiryLabel(until);
+
+  const startEdit = () => { setVal(toLocalInput(until)); setEditing(true); };
+  const save = () => { onSaveUntil(val || null); setEditing(false); };
+  const clear = () => { onSaveUntil(null); setEditing(false); };
+
+  return (
+    <div className="inline-flex flex-col items-center gap-1">
+      <Toggle on={on} busy={busy} onClick={onToggle} />
+      {on && (
+        editing ? (
+          <div className="flex items-center gap-1 mt-1">
+            <input
+              type="datetime-local"
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              className="!py-1 !px-2 text-[11px] !w-auto"
+            />
+            <button type="button" className="btn-primary !py-1 !px-2 text-[11px]" onClick={save}>Set</button>
+            <button type="button" className="text-[11px] text-ink-mute underline" onClick={clear}>Permanent</button>
+            <button type="button" className="text-[11px] text-ink-mute" onClick={() => setEditing(false)}>✕</button>
+          </div>
+        ) : label ? (
+          <button
+            type="button"
+            onClick={startEdit}
+            title="Change"
+            className={`text-[10px] px-1.5 py-0.5 rounded-full ${label.expired ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'}`}
+          >
+            {label.expired ? 'Expired' : label.text}
+          </button>
+        ) : (
+          <button type="button" onClick={startEdit} title="Set" className="text-[10px] text-brand-600 dark:text-brand-400 hover:underline">
+            Set
+          </button>
+        )
+      )}
     </div>
   );
 }

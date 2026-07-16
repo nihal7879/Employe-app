@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, ClipboardList, BarChart3, Users, Building2,
-  FolderKanban, ListChecks, Mail, ChevronLeft, ChevronDown, CalendarSearch,
+  FolderKanban, ListChecks, ChevronLeft, ChevronDown, CalendarSearch,
   Timer, Bell, Database, ShieldCheck, Inbox, UsersRound, UserCog,
   ClipboardCheck, CheckSquare,
 } from 'lucide-react';
@@ -60,8 +60,7 @@ const items: Item[] = [
       { to: '/admin/permissions', icon: ShieldCheck, label: 'Permissions' },
     ],
   },
-  { to: '/admin/email-logs', icon: Mail,            label: 'Notifications', admin: true,  hideForAdmin: false },
-  { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: true  },
+  { to: '/notifications',    icon: Bell,            label: 'Notifications', admin: false, hideForAdmin: false },
 ];
 
 export default function Sidebar() {
@@ -105,6 +104,19 @@ export default function Sidebar() {
     return () => { clearInterval(t); window.removeEventListener('assigned-tasks:seen', load); };
   }, [isAdmin, loc.pathname]);
 
+  // Unread in-app notifications (comments, mentions, etc.) → badge on the
+  // sidebar Notifications item. Refetched on route change and polled so a new
+  // comment surfaces without a reload.
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  useEffect(() => {
+    const load = () => api.get('/notifications/mine/unread-count')
+      .then((r) => setUnreadNotifs(Number(r.data?.count || 0)))
+      .catch(() => undefined);
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, [loc.pathname]);
+
   const toggleGroup = (key: string) => {
     if (collapsed) { setCollapsed(false); setOpenGroups((p) => ({ ...p, [key]: true })); return; }
     setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
@@ -147,7 +159,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto flex flex-col">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto thin-scrollbar flex flex-col">
         <div className="space-y-0.5">
         {visible.map((item) => {
           if (isGroup(item)) {
@@ -251,6 +263,9 @@ export default function Sidebar() {
                     {item.to === '/my-tasks' && unseen > 0 && collapsed && (
                       <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
                     )}
+                    {item.to === '/notifications' && unreadNotifs > 0 && collapsed && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900" />
+                    )}
                   </span>
                   <AnimatePresence>
                     {!collapsed && (
@@ -262,6 +277,11 @@ export default function Sidebar() {
                   {item.to === '/my-tasks' && unseen > 0 && !collapsed && (
                     <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
                       {unseen}
+                    </span>
+                  )}
+                  {item.to === '/notifications' && unreadNotifs > 0 && !collapsed && (
+                    <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {unreadNotifs}
                     </span>
                   )}
                 </>

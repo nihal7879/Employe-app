@@ -1,4 +1,5 @@
 import { useEffect, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -27,7 +28,11 @@ export default function Modal({
     xl: 'max-w-4xl',
   };
 
-  return (
+  // Rendered through a portal on <body> so the fixed overlay is always
+  // positioned relative to the viewport — not to a transformed ancestor (the
+  // page-transition motion.div applies a CSS transform, which would otherwise
+  // make `position: fixed` resolve against it and drop the modal off-centre).
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -38,10 +43,10 @@ export default function Modal({
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
             <motion.div
-              initial={{ opacity: 0, y: 16, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.96 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 6 }}
+              transition={{ duration: 0.16, ease: 'easeOut' }}
               onClick={(e) => e.stopPropagation()}
               className={`bg-white dark:bg-bg-deep rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10 w-full ${widths[size]} pointer-events-auto flex flex-col max-h-[85vh]`}
             >
@@ -56,6 +61,7 @@ export default function Modal({
           </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

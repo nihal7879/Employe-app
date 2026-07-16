@@ -29,6 +29,41 @@ export class DailyTasksController {
     return this.service.findOne(id);
   }
 
+  // Comment thread on a daily task. Admin can comment on any employee's task;
+  // an employee only on their own (enforced in the service).
+  @Get(':id/comments')
+  listComments(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.service.listComments(id, user);
+  }
+
+  @Post(':id/comments')
+  addComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body('body') body: string,
+  ) {
+    return this.service.addComment(id, user, body);
+  }
+
+  @Put(':id/comments/:commentId')
+  editComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('commentId', ParseIntPipe) commentId: number,
+    @Body('body') body: string,
+  ) {
+    return this.service.editComment(id, commentId, user, body);
+  }
+
+  @Delete(':id/comments/:commentId')
+  deleteComment(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('commentId', ParseIntPipe) commentId: number,
+  ) {
+    return this.service.deleteComment(id, commentId, user);
+  }
+
   @Post()
   @Roles('Employee', 'Manager')
   create(
