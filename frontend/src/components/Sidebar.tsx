@@ -366,4 +366,3 @@ function CheckEmployeeDayCard() {
     </motion.div>
   );
 }
-

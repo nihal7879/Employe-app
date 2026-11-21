@@ -5,6 +5,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { resolveFrontendUrl } from '../common/utils/frontend-url';
 import { InboxService } from './inbox.service';
 
 @ApiExcludeController()
@@ -37,16 +38,7 @@ class InboxController {
   @Public()
   @Get('google/callback')
   async callback(@Query('code') code: string, @Query('state') state: string, @Req() req: Request, @Res() res: Response) {
-    const fronts = this.config
-      .get<string>('FRONTEND_URL', 'http://localhost:5173')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const host = (req.get('host') || '').toLowerCase();
-    const isLocal = host.includes('localhost') || host.startsWith('127.');
-    const frontend =
-      (isLocal ? fronts.find((u) => u.includes('localhost')) : fronts.find((u) => !u.includes('localhost'))) ||
-      fronts[0];
+    const frontend = resolveFrontendUrl(req, this.config.get<string>('FRONTEND_URL'));
     try {
       const payload = this.jwt.verify<{ sub: number; purpose: string }>(state, {
         secret: this.config.get<string>('JWT_SECRET', 'change-me'),

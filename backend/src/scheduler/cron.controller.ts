@@ -27,8 +27,6 @@ export class CronController {
   async dailyReport(@Headers('authorization') auth?: string) {
     this.assertSecret(auth);
     await this.scheduler.sendDailyEmployeeReports();
-
-    
     return { ok: true, job: 'daily-report' };
   }
 

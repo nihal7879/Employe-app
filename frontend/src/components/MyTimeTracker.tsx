@@ -1285,4 +1285,3 @@ function BreakdownList({ title, rows, colors }: {
     </div>
   );
 }
-

@@ -5,6 +5,7 @@ import type { CookieOptions, Request, Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
 import { getRequestContext } from '../common/utils/request-context';
+import { resolveFrontendUrl } from '../common/utils/frontend-url';
 import { AuthService } from './auth.service';
 
 export const COOKIE_NAME = 'em_token';
@@ -44,26 +45,8 @@ export class AuthController {
   @Public()
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  // FRONTEND_URL may hold a comma-separated list (localhost + prod). Pick the
-  // entry that matches the host that served THIS request, so the localhost
-  // backend redirects to the localhost frontend and the deployed backend
-  // redirects to the deployed frontend — regardless of NODE_ENV.
-  private frontendUrl(req: Request): string {
-    const urls = this.config
-      .get<string>('FRONTEND_URL', 'http://localhost:5173')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const host = (req.get('host') || '').toLowerCase();
-    const isLocal = host.includes('localhost') || host.startsWith('127.');
-    return (
-      (isLocal ? urls.find((u) => u.includes('localhost')) : urls.find((u) => !u.includes('localhost'))) ||
-      urls[0]
-    );
-  }
-
   async googleCallback(@Req() req: Request, @Res() res: Response) {
-    const frontend = this.frontendUrl(req);
+    const frontend = resolveFrontendUrl(req, this.config.get<string>('FRONTEND_URL'));
     try {
       const profile = req.user as { email: string; name: string; picture?: string };
       const { access_token } = await this.auth.loginWithGoogle(profile, getRequestContext(req));
@@ -175,10 +158,3 @@ export class AuthController {
     return { ...user, ...perms };
   }
 }
-
-
-
-
-
-
-

@@ -103,5 +103,3 @@ export default function Navbar({ onOpenMobileMenu }: { onOpenMobileMenu?: () => 
     </header>
   );
 }
-
-

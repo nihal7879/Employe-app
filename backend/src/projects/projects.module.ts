@@ -83,10 +83,3 @@ class ProjectsController {
 
 @Module({ controllers: [ProjectsController], providers: [ProjectsService] })
 export class ProjectsModule {}
-
-
-
-
-
-
-
