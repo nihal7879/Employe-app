@@ -45,9 +45,14 @@ export function getClientIp(req: Request): string {
     }
   };
 
-  push(trusted, req.headers['cf-connecting-ip']);   // Cloudflare
-  push(trusted, req.headers['true-client-ip']);     // Akamai / Cloudflare Enterprise
-  push(trusted, req.headers['x-real-ip']);          // common nginx setup
+  // cf-connecting-ip / true-client-ip are only meaningful when the app really
+  // sits behind Cloudflare/Akamai. Otherwise any client can send them and fake
+  // the IP in the audit log, so they're ignored unless explicitly enabled.
+  if (process.env.TRUST_CDN_IP_HEADERS === 'true') {
+    push(trusted, req.headers['cf-connecting-ip']); // Cloudflare
+    push(trusted, req.headers['true-client-ip']);   // Akamai / Cloudflare Enterprise
+  }
+  push(trusted, req.headers['x-real-ip']);          // set by Vercel / nginx
   push(trusted, req.headers['x-forwarded-for']);    // standard proxy chain (left-most = client)
   if (req.ip) push(trusted, req.ip);
   if (req.socket?.remoteAddress) push(trusted, req.socket.remoteAddress);

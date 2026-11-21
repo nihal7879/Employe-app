@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import type { CookieOptions, Request, Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
+import { LoginRateLimitGuard } from '../common/guards/login-rate-limit.guard';
 import { getRequestContext } from '../common/utils/request-context';
 import { resolveFrontendUrl } from '../common/utils/frontend-url';
 import { AuthService } from './auth.service';
@@ -60,6 +61,7 @@ export class AuthController {
 
   @Public()
   @Post('google')
+  @UseGuards(LoginRateLimitGuard)
   async googleTokenLogin(
     @Body() body: { credential: string },
     @Req() req: Request,
@@ -99,6 +101,7 @@ export class AuthController {
   // ids, so an arbitrary employeeId can't be smuggled in here.
   @Public()
   @Post('select-identity')
+  @UseGuards(LoginRateLimitGuard)
   async selectIdentity(
     @Body() body: { selectionToken: string; employeeId: number },
     @Req() req: Request,

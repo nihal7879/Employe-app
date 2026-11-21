@@ -21,10 +21,15 @@ export class AuthService {
   }
 
   async verifyGoogleIdToken(credential: string) {
-    const ticket = await this.googleClient.verifyIdToken({
-      idToken: credential,
-      audience: this.config.get<string>('GOOGLE_CLIENT_ID'),
-    });
+    const ticket = await this.googleClient
+      .verifyIdToken({
+        idToken: credential,
+        audience: this.config.get<string>('GOOGLE_CLIENT_ID'),
+      })
+      .catch(() => {
+        // Malformed/expired/forged credential → 401, not a 500 server error.
+        throw new UnauthorizedException('Invalid Google token');
+      });
     const payload = ticket.getPayload();
     if (!payload?.email) throw new UnauthorizedException('Invalid Google token');
     return { email: payload.email, name: payload.name || payload.email, picture: payload.picture };
@@ -180,7 +185,9 @@ export class AuthService {
 
   decodeToken(token: string): { sub: number; email: string } | null {
     try {
-      return this.jwt.verify(token, { secret: jwtSecret(this.config) });
+      const claim = this.jwt.verify(token, { secret: jwtSecret(this.config) });
+      // Only real session tokens — not identity-picker / Gmail-state tokens.
+      return claim?.sub && !claim.purpose ? claim : null;
     } catch {
       return null;
     }
