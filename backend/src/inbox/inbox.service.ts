@@ -4,6 +4,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { Knex } from 'knex';
 import * as crypto from 'crypto';
 import { KNEX_CONNECTION } from '../database/knex.module';
+import { jwtSecret } from '../common/utils/jwt-secret';
 
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 
@@ -29,7 +30,7 @@ export class InboxService {
   // back to JWT_SECRET). decrypt() transparently passes through any legacy
   // plaintext value (no "enc:" prefix), so old rows keep working until re-saved.
   private encKey(): Buffer {
-    const secret = this.config.get<string>('TOKEN_ENC_KEY') || this.config.get<string>('JWT_SECRET', 'change-me');
+    const secret = this.config.get<string>('TOKEN_ENC_KEY') || jwtSecret(this.config);
     return crypto.createHash('sha256').update(secret).digest();
   }
   private encrypt(plain: string): string {

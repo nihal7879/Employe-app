@@ -25,8 +25,8 @@ export class DailyTasksController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
+  findOne(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.service.findOneFor(id, user);
   }
 
   // Comment thread on a daily task. Admin can comment on any employee's task;

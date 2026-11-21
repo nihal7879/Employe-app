@@ -79,6 +79,21 @@ export class DailyTasksService {
     return row;
   }
 
+  // findOne for an API caller: Admin sees any task, a Manager sees their own
+  // and their team's, everyone else only their own. Returns 404 (not 403) so
+  // task ids belonging to other people aren't confirmed to exist.
+  async findOneFor(id: number, user: { id: number; role: string }) {
+    const row = await this.findOne(id);
+    if (user.role === 'Admin' || row.employee_id === user.id) return row;
+    if (user.role === 'Manager') {
+      const inTeam = await this.db('manager_employees')
+        .where({ manager_id: user.id, employee_id: row.employee_id })
+        .first('id');
+      if (inTeam) return row;
+    }
+    throw new NotFoundException('Daily task not found');
+  }
+
   // First 8AM-11:59PM Login event for the employee on the given date. Tasks
   // can't start before this time (the user wasn't "at work" yet). Returns
   // "HH:MM:SS" or null if no qualifying login exists.

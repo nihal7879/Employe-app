@@ -7,6 +7,7 @@ import { Public } from '../common/decorators/public.decorator';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { resolveFrontendUrl } from '../common/utils/frontend-url';
 import { InboxService } from './inbox.service';
+import { jwtSecret } from '../common/utils/jwt-secret';
 
 @ApiExcludeController()
 @Controller('inbox')
@@ -29,7 +30,7 @@ class InboxController {
   connect(@CurrentUser() user: AuthUser) {
     const state = this.jwt.sign(
       { sub: user.id, purpose: 'gmail-connect' },
-      { secret: this.config.get<string>('JWT_SECRET', 'change-me'), expiresIn: '10m' },
+      { secret: jwtSecret(this.config), expiresIn: '10m' },
     );
     return { url: this.inbox.authUrl(state) };
   }
@@ -41,7 +42,7 @@ class InboxController {
     const frontend = resolveFrontendUrl(req, this.config.get<string>('FRONTEND_URL'));
     try {
       const payload = this.jwt.verify<{ sub: number; purpose: string }>(state, {
-        secret: this.config.get<string>('JWT_SECRET', 'change-me'),
+        secret: jwtSecret(this.config),
       });
       if (payload.purpose !== 'gmail-connect') throw new Error('bad state');
       await this.inbox.connect(payload.sub, code);
@@ -75,7 +76,7 @@ class InboxController {
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'change-me'),
+        secret: jwtSecret(config),
       }),
     }),
   ],

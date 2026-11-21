@@ -6,6 +6,7 @@ import { Knex } from 'knex';
 import { KNEX_CONNECTION } from '../database/knex.module';
 import type { RequestContext } from '../common/utils/request-context';
 import { APP_CONFIG } from '../config/app-config';
+import { jwtSecret } from '../common/utils/jwt-secret';
 
 @Injectable()
 export class AuthService {
@@ -62,7 +63,7 @@ export class AuthService {
     const token = this.jwt.sign(
       { sub: employee.id, email: employee.email, role: employee.role, name: employee.name },
       {
-        secret: this.config.get<string>('JWT_SECRET', 'change-me'),
+        secret: jwtSecret(this.config),
         expiresIn: this.config.get<string>('JWT_EXPIRES_IN', APP_CONFIG.jwtExpiresIn),
       },
     );
@@ -120,14 +121,14 @@ export class AuthService {
   signSelectionToken(loginEmail: string, ids: number[]): string {
     return this.jwt.sign(
       { purpose: 'identity-selection', login_email: loginEmail, ids },
-      { secret: this.config.get<string>('JWT_SECRET', 'change-me'), expiresIn: '5m' },
+      { secret: jwtSecret(this.config), expiresIn: '5m' },
     );
   }
 
   verifySelectionToken(token: string): { login_email: string; ids: number[] } | null {
     try {
       const claim = this.jwt.verify(token, {
-        secret: this.config.get<string>('JWT_SECRET', 'change-me'),
+        secret: jwtSecret(this.config),
       }) as { purpose?: string; login_email?: string; ids?: number[] };
       if (claim.purpose !== 'identity-selection' || !Array.isArray(claim.ids)) return null;
       return { login_email: claim.login_email || '', ids: claim.ids.map(Number) };
@@ -179,7 +180,7 @@ export class AuthService {
 
   decodeToken(token: string): { sub: number; email: string } | null {
     try {
-      return this.jwt.verify(token, { secret: this.config.get<string>('JWT_SECRET', 'change-me') });
+      return this.jwt.verify(token, { secret: jwtSecret(this.config) });
     } catch {
       return null;
     }

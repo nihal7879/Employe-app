@@ -27,20 +27,28 @@ async function bootstrap() {
     }),
   );
 
-  const swagger = new DocumentBuilder()
-    .setTitle('Employee App API')
-    .setDescription('Daily Task Management — REST API')
-    .setVersion('0.1.0')
-    .addCookieAuth('em_token')
-    .build();
-  const doc = SwaggerModule.createDocument(app, swagger);
-  SwaggerModule.setup('docs', app, doc);
+  // API docs list every endpoint, so they're only served outside production
+  // (set ENABLE_SWAGGER=true to turn them on in production deliberately).
+  const swaggerEnabled =
+    process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true';
+  if (swaggerEnabled) {
+    const swagger = new DocumentBuilder()
+      .setTitle('Employee App API')
+      .setDescription('Daily Task Management — REST API')
+      .setVersion('0.1.0')
+      .addCookieAuth('em_token')
+      .build();
+    const doc = SwaggerModule.createDocument(app, swagger);
+    SwaggerModule.setup('docs', app, doc);
+  }
 
   const port = Number(process.env.PORT || 4000);
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(`🚀 Backend running on http://localhost:${port}`);
-  // eslint-disable-next-line no-console
-  console.log(`📚 Swagger docs at http://localhost:${port}/docs`);
+  if (swaggerEnabled) {
+    // eslint-disable-next-line no-console
+    console.log(`📚 Swagger docs at http://localhost:${port}/docs`);
+  }
 }
 bootstrap();

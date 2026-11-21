@@ -3,6 +3,20 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateEmployeeDto, UpdateEmployeeDto, UpdatePermissionsDto } from './dto/employee.dto';
 import { EmployeesService } from './employees.service';
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+
+// Directory fields any signed-in user may see (pickers, mentions, names).
+// Personal/HR fields — phone, joining date, permission flags — stay Admin-only.
+const PUBLIC_EMPLOYEE_FIELDS = [
+  'id', 'employee_code', 'name', 'email', 'designation', 'profile_image', 'is_active',
+  'role_id', 'role_name', 'department_id', 'department_name',
+] as const;
+
+function publicEmployee(row: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const k of PUBLIC_EMPLOYEE_FIELDS) if (k in row) out[k] = row[k];
+  return out;
+}
 
 @Controller('employees')
 @UseGuards(RolesGuard)
@@ -10,18 +24,21 @@ export class EmployeesController {
   constructor(private readonly service: EmployeesService) {}
 
   @Get()
-  findAll(
+  async findAll(
     @Query('search') search?: string,
     @Query('department_id') department_id?: number,
     @Query('role_id') role_id?: number,
     @Query('include_admin') include_admin?: string,
+    @CurrentUser() user?: AuthUser,
   ) {
-    return this.service.findAll({ search, department_id, role_id, include_admin });
+    const rows = await this.service.findAll({ search, department_id, role_id, include_admin });
+    return user?.role === 'Admin' ? rows : rows.map(publicEmployee);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.service.findOne(id);
+  async findOne(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    const row = await this.service.findOne(id);
+    return user.role === 'Admin' ? row : publicEmployee(row);
   }
 
   @Post()
